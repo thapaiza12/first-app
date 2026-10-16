@@ -3,6 +3,7 @@ import multer from 'multer';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
 import {assist} from './local-assist.js';
+import {normalizeExperience} from '../src/employment.js';
 import {geminiAssist} from './gemini-assist.js';
 import {spawn} from 'node:child_process';
 import fs from 'node:fs';
@@ -33,7 +34,7 @@ app.post('/api/desktop/stop',(req,res)=>{
 const str=z.string().max(25000);const row=z.object({date:str.optional().default(''),end:str.optional().default(''),name:str.optional().default(''),detail:str.optional().default(''),business:str.optional().default(''),employmentType:str.optional().default(''),position:str.optional().default(''),current:z.boolean().optional().default(false)});
 const fields=['documentDate','alternateAddress','alternateAddressKana','alternatePostalCode','alternatePhone','title','name','furigana','birthDate','gender','postalCode','address','addressKana','phone','email','motivation','strengths','preferences','summary','skills','techSkills','additional','jobNotes','careerNotes','jobText','careerText','sourceText'];
 const shape=Object.fromEntries(fields.map(k=>[k,(k.endsWith('Text')?z.string().max(100000):str).optional().default('')]));
-const docSchema=z.object({...shape,type:z.enum(['rirekisho','shokumukeirekisho']),photo:z.string().max(8000000).refine(v=>!v||/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v)).optional().default(''),education:z.array(row).max(100).default([]),experience:z.array(row).max(100).default([]),licenses:z.array(row).max(100).default([]),uploads:z.array(z.object({name:z.string().max(300),role:z.enum(['source','job','career'])})).max(100).default([]),confirmed:z.boolean().default(false)});
+const docSchema=z.object({...shape,type:z.enum(['rirekisho','shokumukeirekisho']),photo:z.string().max(8000000).refine(v=>!v||/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v)).optional().default(''),education:z.array(row).max(100).default([]),experience:z.array(row).max(100).default([]).transform(normalizeExperience),licenses:z.array(row).max(100).default([]),languages:z.array(z.object({language:str.optional().default(''),level:z.enum(['','ネイティブレベル','ネイティブに近いレベル','ビジネスレベル','日常会話レベル','挨拶レベル']).optional().default(''),qualification:str.optional().default(''),date:str.optional().default('')})).max(40).optional().default([]),uploads:z.array(z.object({name:z.string().max(300),role:z.enum(['source','job','career'])})).max(100).default([]),confirmed:z.boolean().default(false)});
 const parseDoc=(v)=>docSchema.parse(v);
 app.get('/api/documents',(req,res)=>res.json(db.prepare('SELECT id,payload,updated FROM documents ORDER BY updated DESC').all().map(r=>({id:r.id,updated:r.updated,...JSON.parse(r.payload)}))));
 app.post('/api/documents',(req,res)=>{const d=parseDoc(req.body);const id=randomUUID();db.prepare('INSERT INTO documents VALUES(?,?,?)').run(id,JSON.stringify(d),new Date().toISOString());res.json({id,...d});});
@@ -49,6 +50,7 @@ app.post('/api/assist',async(req,res,next)=>{try{
  if(process.env.GEMINI_API_KEY){try{return res.json(await geminiAssist(input,{apiKey:process.env.GEMINI_API_KEY,model:process.env.GEMINI_MODEL||'gemini-2.5-flash'}));}catch(error){const fallback=assist(input);return res.json({...fallback,warnings:[error.message,'今回はローカル処理に切り替えました。生成AIではなく、読取ルール・定型文による結果です。',...fallback.warnings]});}}
  res.json(assist(input));
 }catch(e){next(e);}});
+app.post('/api/resume-layout',async(req,res,next)=>{try{const document=parseDoc(req.body);res.json(await python(['check'],document));}catch(e){next(e);}});
 app.post('/api/export',async(req,res,next)=>{try{const {id,format,document}=z.object({id:z.string().uuid(),format:z.enum(['pdf','docx']),document:docSchema}).parse(req.body);if(!document.confirmed)return res.status(400).json({error:'内容を確認してチェックを入れてください。'});if(!document.name.trim())return res.status(400).json({error:'氏名を入力してください。'});const historyId=randomUUID();const file=path.join(dataDir,`${historyId}.${format}`);await python(['export',format,file],document);db.prepare('INSERT INTO history VALUES(?,?,?,?,?,?)').run(historyId,id,JSON.stringify(document),format,file,new Date().toISOString());res.json({id:historyId,url:`/api/history/${historyId}/download`});}catch(e){next(e);}});
 app.get('/api/history',(req,res)=>res.json(db.prepare('SELECT id,document_id,payload,format,created FROM history ORDER BY created DESC').all().map(r=>({...r,document:JSON.parse(r.payload),payload:undefined}))));
 app.get('/api/history/:id/download',(req,res)=>{const r=db.prepare('SELECT * FROM history WHERE id=?').get(req.params.id);if(!r||!fs.existsSync(r.file))return res.sendStatus(404);const d=JSON.parse(r.payload);res.download(r.file,`${d.name||'応募書類'}_${d.type==='rirekisho'?'履歴書':'職務経歴書'}.${r.format}`);});

@@ -52,8 +52,14 @@ def extract(path, original):
     elif ext=='.docx':
         from docx import Document
         d=Document(path); text='\n'.join(p.text for p in d.paragraphs)
-        for t in d.tables:
-            text+='\n'+'\n'.join(' | '.join(c.text for c in r.cells) for r in t.rows)
+        def table_text(table):
+            parts=[]
+            for row in table.rows:
+                for cell in row.cells:
+                    parts.append(cell.text)
+                    for nested in cell.tables: parts.append(table_text(nested))
+            return '\n'.join(parts)
+        for t in d.tables: text+='\n'+table_text(t)
         with zipfile.ZipFile(path) as z:
             for n in z.namelist():
                 if n.startswith('word/media/'): save_photo(z.read(n))
@@ -107,7 +113,10 @@ def export(d,fmt,out):
 
 if __name__=='__main__':
     try:
-        if sys.argv[1]=='extract': print(json.dumps(extract(sys.argv[2],sys.argv[3]),ensure_ascii=False))
+        if sys.argv[1]=='check':
+            from resume_layout import layout
+            layout(json.load(sys.stdin));print(json.dumps({'pages':2,'fits':True}))
+        elif sys.argv[1]=='extract': print(json.dumps(extract(sys.argv[2],sys.argv[3]),ensure_ascii=False))
         else:
             export(json.load(sys.stdin),sys.argv[2],sys.argv[3]); print(json.dumps({'ok':True}))
     except Exception as e:

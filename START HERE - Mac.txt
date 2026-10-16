@@ -1,4 +1,4 @@
-M&A GROUP — MAC APP, NO TERMINAL NEEDED
+M&A CV creation — MAC APP, NO TERMINAL NEEDED
 
 Download MA-Group-Mac-App.zip, then double-click it to extract M&A Group.app.
 Drag M&A Group.app into Applications. Open it from Applications or add it to
@@ -52,3 +52,10 @@ No hosting account or company password is needed.
 The background lifecycle and packaging are tested on Linux. macOS-specific
 LaunchServices, Gatekeeper and Keychain behavior still require a real Mac test.
 This app is not signed or notarized by Apple.
+
+VERSION 0.4
+This update adds larger black form text, separate résumé 入社/退社 rows, a strict
+two-page résumé export check, and the six-section career document with language
+skills. The browser tab is named M&A CV creation; its address remains local.
+Install by stopping the old background app, then replacing the application in
+Applications. Documents and the Keychain key are kept outside the app bundle.

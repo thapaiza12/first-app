@@ -50,7 +50,17 @@ def qualification_rows(d):
         raw=r.get('date','').split('-');rows.append([raw[0] if raw else '',raw[1] if len(raw)>1 else '',r.get('name','')])
     return rows
 
+def career_tail(d):
+    qualifications='資格\n'+'\n'.join(r.get('name','')+'　'+jpdate(r.get('date','')) for r in d.get('licenses',[]))
+    languages='語学力\n'+'\n'.join('　'.join(filter(None,[r.get('language',''),r.get('level',''),r.get('qualification',''),jpdate(r.get('date',''))])) for r in d.get('languages',[]))
+    pr=d.get('additional','')
+    if d.get('motivation') and d['motivation'] not in pr:pr+='\n\n'+d['motivation']
+    return [('4. テクニカルスキル',d.get('techSkills','')),('5. 資格・語学力',qualifications+'\n\n'+languages),('6. 自己PR・志望動機',pr.strip())]
+
 def render_document(d,fmt,out):
+    if d.get('type')!='shokumukeirekisho':
+        import resume_layout
+        return resume_layout.word(d,out) if fmt=='docx' else resume_layout.pdf(d,out)
     if fmt=='docx':return word(d,out)
     return pdf(d,out)
 
@@ -100,11 +110,13 @@ def pdf(d,out):
         story.append(box(MOTIVATION,'\n\n'.join(filter(None,[d.get('motivation',''),d.get('strengths','')])),105))
         story.extend([Spacer(1,12),box(PREFERENCES,d.get('preferences',''),85)])
     else:
-        story.extend([p('職 務 経 歴 書',title),p(jpdate(asof(d).isoformat())+' 現在',right),p(d.get('name',''),right),Spacer(1,16)])
+        story.append(p('職 務 経 歴 書',title))
         # A career-history document uses narrative headings, not résumé personal-data boxes.
-        for label,key in [('職務要約','summary'),('活かせる経験・知識・技術','skills')]:
-            story.append(p('■ '+label,heading));story.append(p(d.get(key,'')))
-        story.append(p('■ 職務経歴',heading))
+        for label,key in [('1. 職務要約','summary'),('2. 活かせる経験・知識・技術','skills')]:
+            story.append(p(label,heading))
+            if key=='summary':story.extend([p('氏名：'+d.get('name','')),p('記入日：'+jpdate(asof(d).isoformat())+' 現在'),Spacer(1,7)])
+            story.append(p(d.get(key,'')))
+        story.append(p('3. 職務経歴',heading))
         if not d.get('experience'):story.append(p(''))
         for i,r in enumerate(d.get('experience',[]),1):
             story.append(p(str(i)+'. '+r.get('name',''),heading))
@@ -116,9 +128,8 @@ def pdf(d,out):
             story.extend([Spacer(1,7),p('担当業務・実績',small)])
             for line in (r.get('detail','') or '　').split('\n'):story.append(p(line))
             story.append(Spacer(1,10))
-        for label,value in [('PC・技術スキル',d.get('techSkills','')),('資格・免許', '\n'.join(jpdate(r.get('date',''))+'　'+r.get('name','') for r in d.get('licenses',[]))),('自己PR',d.get('additional',''))]:
-            if label=='資格・免許' and not value:continue
-            story.append(p('■ '+label,heading))
+        for label,value in career_tail(d):
+            story.append(p(label,heading))
             for line in (value or '　').split('\n'):story.append(p(line))
         story.extend([Spacer(1,16),p('以上',right)])
     def footer(canvas,doc):
@@ -156,7 +167,7 @@ def word(d,out):
         return table([['年','月',label]]+padded,[15,10,149])
     resume=d.get('type')!='shokumukeirekisho'
     title=doc.add_paragraph('履 歴 書' if resume else '職 務 経 歴 書','Title');title.alignment=WD_ALIGN_PARAGRAPH.CENTER
-    para(jpdate(asof(d).isoformat())+' 現在',WD_ALIGN_PARAGRAPH.RIGHT)
+    if resume:para(jpdate(asof(d).isoformat())+' 現在',WD_ALIGN_PARAGRAPH.RIGHT)
     if resume:
         t=table([['ふりがな　'+d.get('furigana',''),''],['氏名　'+d.get('name',''),''],[birth(d)+'　性別（任意） '+d.get('gender',''),'']],[140,34])
         t.cell(1,0).paragraphs[0].runs[0].font.size=Pt(18)
@@ -167,10 +178,11 @@ def word(d,out):
         para();rows=timeline(d);chron(rows[:14],TITLE,14);doc.add_page_break();chron(rows[14:],TITLE,5);para();chron(qualification_rows(d),'免許・資格',5);para()
         table([[MOTIVATION],['\n\n'.join(filter(None,[d.get('motivation',''),d.get('strengths','')])) or '\n\n']]);para();table([[PREFERENCES],[d.get('preferences','') or '\n\n']])
     else:
-        para(d.get('name',''),WD_ALIGN_PARAGRAPH.RIGHT)
-        for label,key in [('職務要約','summary'),('活かせる経験・知識・技術','skills')]:
-            doc.add_heading('■ '+label,1);para(d.get(key,''))
-        doc.add_heading('■ 職務経歴',1)
+        for label,key in [('1. 職務要約','summary'),('2. 活かせる経験・知識・技術','skills')]:
+            doc.add_heading(label,1)
+            if key=='summary':para('氏名：'+d.get('name',''));para('記入日：'+jpdate(asof(d).isoformat())+' 現在')
+            para(d.get(key,''))
+        doc.add_heading('3. 職務経歴',1)
         for i,r in enumerate(d.get('experience',[]),1):
             doc.add_heading(str(i)+'. '+r.get('name',''),2)
             rows=[]
@@ -179,8 +191,7 @@ def word(d,out):
                 if value:rows.append([label,value])
             if rows:table(rows,[30,144])
             doc.add_heading('担当業務・実績',3);para(r.get('detail',''))
-        for label,value in [('PC・技術スキル',d.get('techSkills','')),('資格・免許','\n'.join(jpdate(r.get('date',''))+'　'+r.get('name','') for r in d.get('licenses',[]))),('自己PR',d.get('additional',''))]:
-            if label=='資格・免許' and not value:continue
-            doc.add_heading('■ '+label,1);para(value)
+        for label,value in career_tail(d):
+            doc.add_heading(label,1);para(value)
         para('以上',WD_ALIGN_PARAGRAPH.RIGHT)
     doc.save(out)

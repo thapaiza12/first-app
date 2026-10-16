@@ -1,4 +1,4 @@
-# M&A Group — Gemini & Local Career Workspace
+# M&A CV creation — M&A Group
 
 Japanese 履歴書 and 職務経歴書 editor. When GEMINI_API_KEY is configured, Gemini is the default document-reading and drafting provider. Without it, the app uses free local OCR, extraction rules, and templates. No company password or login is required.
 
@@ -54,11 +54,11 @@ The private SQLite database, selected photos, text, and generated files are stor
 
 ## Document formats
 
-履歴書 now uses a two-sheet sample layout: optional gender, current and alternate contact addresses, combined education/employment chronology, licenses, the combined motivation/strengths area, and applicant preferences. It excludes family/dependant/spouse questions. Date and alternate-contact information are editable. Long input adds continuation pages instead of being silently cut off.
+履歴書 now uses a two-sheet sample layout: optional gender, current and alternate contact addresses, combined education/employment chronology, licenses, the combined motivation/strengths area, and applicant preferences. It excludes family/dependant/spouse questions. Date and alternate-contact information are editable. Résumé downloads are limited to exactly two fixed sheets. Text is measured at readable font sizes before export. If education/employment, qualifications, or writing cannot fit, both PDF and Word exports stop with an actionable message; they never silently discard input or add a third sheet. The PDF page count is checked after generation. Word uses two fixed-height sheets with measured, manually wrapped editable text; changes made later in Word may change its layout.
 
 This is an independent recreation of the ministry sample's field structure. The official ministry page (`https://www.mhlw.go.jp/stf/newpage_kouseisaiyou030.html`) could not be retrieved because the cloud network blocked that host. It has not been compared with the actual official PDF/Excel file; do not represent it as an exact official-template reproduction or government-certified form. An uploaded official file is needed to verify an exact match.
 
-職務経歴書 uses a separate narrative layout with date/name, work summary, applicable skills, company-by-company history (period/business/employment type/role/duties), technical skills, qualifications, and self-PR. It does not export résumé photo, birth-date, gender, or address boxes. Current employment is an explicit editable flag; blank end dates alone do not imply a current job. PDF and editable Word exports follow the same distinct structures.
+職務経歴書 uses these six numbered sections: 1. 職務要約 (name, 記入日 and editable summary), 2. 活かせる経験・知識・技術, 3. 職務経歴 (editable company entries with an add-company button), 4. テクニカルスキル, 5. 資格・語学力 (qualifications with names/dates plus language, the five requested proficiency levels, language qualification/date), and 6. 自己PR・志望動機, followed by 以上. It has no decorative rules outside employment tables. It does not export résumé photo, birth-date, gender, or address boxes. Each résumé company prints two rows, 入社 and 退社, with their respective dates. Current employment is an explicit editable flag and uses 現在に至る in the second row. Legacy separate 入社/退社 records are paired without inventing dates. Blank end dates alone do not imply a current job. PDF and editable Word exports follow the same distinct structures.
 
 ## Gemini setup and environment editor
 
@@ -86,3 +86,7 @@ Tests cover Gemini request structure, response validation, quota/error handling 
 The bundled Noto Serif JP font is licensed under the SIL Open Font License (`server/fonts/OFL.txt`). It is a Japanese Mincho font, not a government certification. The supplied workflow reference informs the section flow and preview. Export pagination and spacing can differ from the continuous onscreen preview.
 
 Live Gemini access is not established by mocked tests. It requires a privately configured key and a successful real provider request; no live Gemini validation has been completed yet.
+
+## Name and readability
+
+The product/browser-tab title is M&A CV creation. Form controls use black text at 16px or larger, with larger labels and responsive layouts. The loopback address remains a working local URL; a phrase containing spaces and an ampersand cannot replace a browser hostname. No hosts-file edits, root privileges, or custom DNS are requested.
