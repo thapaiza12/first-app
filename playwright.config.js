@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test';
+export default defineConfig({testDir:'./tests/browser',workers:1,use:{baseURL:'http://127.0.0.1:3099',launchOptions:{executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox']},screenshot:'only-on-failure'},webServer:{command:'GEMINI_API_KEY= PORT=3099 DATA_DIR=/tmp/ma-browser-tests node server/index.js',port:3099,reuseExistingServer:false}});

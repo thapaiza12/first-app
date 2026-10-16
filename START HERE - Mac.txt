@@ -1,0 +1,51 @@
+M&A GROUP — YOUR MAC APP
+
+This is a local web app: it runs on your Mac and opens in Safari or Chrome.
+No hosting account or company login password is needed.
+
+ONE-TIME SETUP
+1. Install Node.js 24 or newer from https://nodejs.org/ (macOS installer).
+2. Install Python 3.12 or newer from https://www.python.org/downloads/macos/.
+   If Python reports certificate errors, run its supplied Install Certificates.command.
+   Do not disable certificate verification.
+3. Unzip the whole app folder. Put it somewhere permanent, for example
+   Documents/M&A Group. Do not run it from inside the ZIP or a temporary folder.
+4. Right-click Start M&A Group.command and choose Open. If macOS blocks it,
+   review the message and use the macOS Privacy & Security Open Anyway action
+   for this file. Do not disable Gatekeeper system-wide.
+5. The first run downloads dependencies and may take several minutes.
+
+EVERYDAY USE
+- Open Start M&A Group.command. It will start the app and open your browser.
+- Optionally enter your Gemini API key when Terminal asks. Input is hidden.
+  It is not saved to a file. Press Return to use local tools without a key.
+- Keep the Terminal window open while using the app.
+- When finished, close the browser tab and press Control+C in Terminal.
+- Next time, open the same launcher. Your documents remain saved.
+- The computer must be on, and the launcher must be running, to use the app.
+
+WHERE YOUR DOCUMENTS LIVE
+Documents and generated files are kept in the hidden .data folder inside the app
+folder. In Finder, press Command+Shift+period to reveal hidden files.
+Back up the entire app folder with Time Machine. Do not delete or replace .data.
+The cloud workspace's existing documents and credentials are NOT included in
+this download. This is a clean installation for your Mac.
+
+OPTIONAL: SCANNED DOCUMENTS / PHOTOS
+Text-based PDF, Word, Excel and PowerPoint files work without Tesseract.
+For local reading of scanned pages/images, install Tesseract OCR. If you already
+use Homebrew, run: brew install tesseract
+The app includes verified Japanese/English OCR language data.
+Gemini can also read page images when its key is supplied, but internet access
+is required. All results and photos need checking against the original.
+
+INTERNET AND COSTS
+The initial installation needs internet. Once installed, manual editing, local
+readers, PDF/Word exports and history work without internet. Gemini needs
+internet, and Google free-tier limits/project billing still apply. When Gemini
+is configured, uploaded source text/page images and writing evidence are sent
+to Google. Enter a fresh private key, not a key previously shared in chat.
+The app itself uses no hosting account and charges no subscription fee.
+
+This launcher was tested in the cloud on Linux; macOS execution has not been
+verified on an actual Mac. It is a launcher package, not a signed Mac installer.
