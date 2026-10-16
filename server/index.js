@@ -19,9 +19,19 @@ app.use((req,res,next)=>{res.set('X-Content-Type-Options','nosniff');res.set('Re
 // Same-origin writes only. Do not trust forwarded host headers for the origin check.
 app.use('/api',(req,res,next)=>{const origin=req.get('origin');if(!['GET','HEAD','OPTIONS'].includes(req.method)&&origin){try{if(new URL(origin).host!==req.get('host'))return res.status(403).json({error:'別サイトからの操作は許可されていません。'});}catch{return res.sendStatus(403);}}next();});
 app.get('/api/font',(req,res)=>{res.set('Cache-Control','public,max-age=86400');res.sendFile(path.join(root,'server/fonts/NotoSerifJP.ttf'));});
-app.get('/api/status',(req,res)=>res.json({assistMode:process.env.GEMINI_API_KEY?'gemini':'local',geminiConfigured:!!process.env.GEMINI_API_KEY,loginRequired:false,mode:production?'production':'development'}));
-const str=z.string().max(25000);const row=z.object({date:str.optional().default(''),end:str.optional().default(''),name:str.optional().default(''),detail:str.optional().default('')});
-const fields=['title','name','furigana','birthDate','gender','postalCode','address','addressKana','phone','email','motivation','strengths','preferences','summary','skills','techSkills','additional','jobNotes','careerNotes','jobText','careerText','sourceText'];
+app.get('/api/status',(req,res)=>res.json({assistMode:process.env.GEMINI_API_KEY?'gemini':'local',geminiConfigured:!!process.env.GEMINI_API_KEY,desktopInstance:process.env.MA_DESKTOP_INSTANCE||null,desktopMode:!!process.env.MA_DESKTOP_INSTANCE,loginRequired:false,mode:production?'production':'development'}));
+// Desktop controls are available only to the loopback-bound Mac background process.
+app.post('/api/desktop/settings',(req,res)=>{
+ if(!process.env.MA_DESKTOP_INSTANCE||process.env.NODE_ENV==='production')return res.sendStatus(404);
+ const child=spawn(process.env.PYTHON||'python3',[path.join(root,'desktop/mac_app.py'),'--settings'],{env:process.env,detached:true,stdio:'ignore'});
+ child.on('error',()=>{});child.unref();res.json({ok:true});
+});
+app.post('/api/desktop/stop',(req,res)=>{
+ if(!process.env.MA_DESKTOP_INSTANCE||process.env.NODE_ENV==='production')return res.sendStatus(404);
+ res.json({ok:true});setTimeout(()=>process.exit(0),200);
+});
+const str=z.string().max(25000);const row=z.object({date:str.optional().default(''),end:str.optional().default(''),name:str.optional().default(''),detail:str.optional().default(''),business:str.optional().default(''),employmentType:str.optional().default(''),position:str.optional().default(''),current:z.boolean().optional().default(false)});
+const fields=['documentDate','alternateAddress','alternateAddressKana','alternatePostalCode','alternatePhone','title','name','furigana','birthDate','gender','postalCode','address','addressKana','phone','email','motivation','strengths','preferences','summary','skills','techSkills','additional','jobNotes','careerNotes','jobText','careerText','sourceText'];
 const shape=Object.fromEntries(fields.map(k=>[k,(k.endsWith('Text')?z.string().max(100000):str).optional().default('')]));
 const docSchema=z.object({...shape,type:z.enum(['rirekisho','shokumukeirekisho']),photo:z.string().max(8000000).refine(v=>!v||/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v)).optional().default(''),education:z.array(row).max(100).default([]),experience:z.array(row).max(100).default([]),licenses:z.array(row).max(100).default([]),uploads:z.array(z.object({name:z.string().max(300),role:z.enum(['source','job','career'])})).max(100).default([]),confirmed:z.boolean().default(false)});
 const parseDoc=(v)=>docSchema.parse(v);

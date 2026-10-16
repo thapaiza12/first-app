@@ -1,51 +1,54 @@
-M&A GROUP — YOUR MAC APP
+M&A GROUP — MAC APP, NO TERMINAL NEEDED
 
-This is a local web app: it runs on your Mac and opens in Safari or Chrome.
-No hosting account or company login password is needed.
+Download MA-Group-Mac-App.zip, then double-click it to extract M&A Group.app.
+Drag M&A Group.app into Applications. Open it from Applications or add it to
+Dock. You do not need the old .command launcher or a Terminal window.
 
-ONE-TIME SETUP
-1. Install Node.js 24 or newer from https://nodejs.org/ (macOS installer).
-2. Install Python 3.12 or newer from https://www.python.org/downloads/macos/.
-   If Python reports certificate errors, run its supplied Install Certificates.command.
-   Do not disable certificate verification.
-3. Unzip the whole app folder. Put it somewhere permanent, for example
-   Documents/M&A Group. Do not run it from inside the ZIP or a temporary folder.
-4. Right-click Start M&A Group.command and choose Open. If macOS blocks it,
-   review the message and use the macOS Privacy & Security Open Anyway action
-   for this file. Do not disable Gatekeeper system-wide.
-5. The first run downloads dependencies and may take several minutes.
+Node.js 24+ and Python 3.12+ must be installed once. If you already installed
+them for the previous version, do not reinstall them.
+
+FIRST OPEN
+This is an unsigned app. macOS may block its first launch. If so, click Done,
+then System Settings > Privacy & Security > Open Anyway for M&A Group.
+Do not disable Gatekeeper for your entire Mac.
+
+First-time setup installs components in the background. A message explains
+that setup can take several minutes. The browser opens when setup completes.
+If Python reports certificate errors in the app log, run the official Python
+installer's Install Certificates.command. Do not disable TLS checks.
+
+GEMINI
+A normal Mac dialog asks for your key once. Paste it there. Save key stores it
+in your Mac login Keychain, not a text file. Choose Use local tools to skip it.
+macOS may ask permission for Python to access the Keychain; allow it for this
+app if you want to use the saved key. You can change it later from the app's
+Gemini/local-assist settings window. Google free-tier limits and billing apply.
 
 EVERYDAY USE
-- Open Start M&A Group.command. It will start the app and open your browser.
-- Optionally enter your Gemini API key when Terminal asks. Input is hidden.
-  It is not saved to a file. Press Return to use local tools without a key.
-- Keep the Terminal window open while using the app.
-- When finished, close the browser tab and press Control+C in Terminal.
-- Next time, open the same launcher. Your documents remain saved.
-- The computer must be on, and the launcher must be running, to use the app.
+Click M&A Group in Applications/Dock. No Terminal window is opened.
+Closing the browser does NOT stop the background app. Click the icon again to
+reopen it. After restarting your Mac, click the icon to start it again.
+To stop it deliberately, open the app's Gemini/local-assist settings and click
+Stop app (アプリを停止). Your saved documents remain available next time.
 
-WHERE YOUR DOCUMENTS LIVE
-Documents and generated files are kept in the hidden .data folder inside the app
-folder. In Finder, press Command+Shift+period to reveal hidden files.
-Back up the entire app folder with Time Machine. Do not delete or replace .data.
-The cloud workspace's existing documents and credentials are NOT included in
-this download. This is a clean installation for your Mac.
+YOUR DOCUMENTS
+Documents are stored separately from the app in:
+~/Library/Application Support/M&A Group/data
+To find them in Finder, choose Go > Go to Folder and paste that location.
+Back up this folder with Time Machine. Do not delete it when updating the app.
 
-OPTIONAL: SCANNED DOCUMENTS / PHOTOS
-Text-based PDF, Word, Excel and PowerPoint files work without Tesseract.
-For local reading of scanned pages/images, install Tesseract OCR. If you already
-use Homebrew, run: brew install tesseract
-The app includes verified Japanese/English OCR language data.
-Gemini can also read page images when its key is supplied, but internet access
-is required. All results and photos need checking against the original.
+The previous Terminal version stored documents in its hidden .data folder.
+This new app does not automatically copy those records. Keep the old folder.
+If you have important earlier documents, ask for migration help before deleting
+anything. No applicant records or API keys are included in this download.
 
-INTERNET AND COSTS
-The initial installation needs internet. Once installed, manual editing, local
-readers, PDF/Word exports and history work without internet. Gemini needs
-internet, and Google free-tier limits/project billing still apply. When Gemini
-is configured, uploaded source text/page images and writing evidence are sent
-to Google. Enter a fresh private key, not a key previously shared in chat.
-The app itself uses no hosting account and charges no subscription fee.
+Logs are in ~/Library/Logs/M&A Group/app.log. If setup does not finish, open
+that file in TextEdit and share the error text (never an API key).
 
-This launcher was tested in the cloud on Linux; macOS execution has not been
-verified on an actual Mac. It is a launcher package, not a signed Mac installer.
+Manual editing, local text-document readers, exports and history work offline.
+Gemini needs internet. Tesseract is optional for offline scans/image OCR.
+No hosting account or company password is needed.
+
+The background lifecycle and packaging are tested on Linux. macOS-specific
+LaunchServices, Gatekeeper and Keychain behavior still require a real Mac test.
+This app is not signed or notarized by Apple.

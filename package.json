@@ -9,7 +9,9 @@
     "build": "vite build",
     "start": "NODE_ENV=production node --env-file-if-exists=.env server/index.js",
     "test": "node --test tests/*.test.js",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:desktop": "python3 -m unittest discover -s tests -p test_mac_desktop.py -v",
+    "package:mac": "npm run build && python3 desktop/build_mac_bundle.py"
   },
   "repository": {
     "type": "git",

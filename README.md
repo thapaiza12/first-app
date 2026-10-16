@@ -14,11 +14,17 @@ Japanese 履歴書 and 職務経歴書 editor. When GEMINI_API_KEY is configured
 
 **The local fallback is rule/template based, not generative AI. Gemini mode uses Google’s generative model.** It cannot interpret every document layout or produce the same varied language as a language model. OCR and autofill may misread text; staff must check originals and edit drafts. Legacy DOC/XLS and unsupported formats need conversion. Word may substitute a font unless Noto Serif JP is installed.
 
-## Use on your Mac (no hosting)
+## Use on your Mac — no Terminal window
 
-Download and unzip the Mac launcher package into a permanent folder. See `START HERE - Mac.txt`. Install Node.js 24+ and Python 3.12+ once, then open `Start M&A Group.command`. The first launch installs dependencies; later launches open the app in your browser. Keep the Terminal window open during use. The launcher always binds to your own computer only and stores documents in the package folder's hidden `.data` directory. It never includes cloud credentials or applicant data in the download.
+Download `downloads/MA-Group-Mac-App.zip`, unzip it, and drag **M&A Group.app** into Applications. Open that icon or add it to Dock. It starts the server in the background and opens the browser. Closing the browser or Terminal does not stop this background process. Opening the icon again reconnects to the same process. After restarting the Mac, open the icon again. No login password or hosting is required.
 
-You can enter a Gemini key using hidden Terminal input each session, or press Return for local tools. Keys entered this way stay in the launched process environment, not a saved file. Gemini needs internet; installed local readers/editing/export/history work offline. Tesseract is optional for local image OCR; without it, text documents work and configured Gemini can still receive page images. Hosting is not needed. This is a source/launcher package, not a notarized standalone Mac binary. The launcher is validated on Linux; actual macOS behavior needs verification on the user's Mac.
+Node.js 24+ and Python 3.12+ are still one-time prerequisites. Existing installations from the previous version are reused. First open prepares dependencies in `~/Library/Application Support/M&A Group/app`; it never installs inside the downloaded app bundle. A normal macOS dialog asks for a Gemini key, stored through the native macOS Keychain backend. There is no plaintext key file. Choose local tools to skip Gemini. The app settings contain controls to update the key and stop the background app deliberately.
+
+Applicant data is kept separately in `~/Library/Application Support/M&A Group/data`. Keep and back up that directory when replacing the app. The old `.command` version's `.data` folder is not migrated automatically: preserve the old folder and move its documents deliberately before deleting it. Setup logs are in `~/Library/Logs/M&A Group/app.log`. Never post API keys with logs.
+
+This app is unsigned and not notarized, so macOS may require a one-time Privacy & Security **Open Anyway** approval. Do not disable system security. The background lifecycle, packaging, and Keychain control logic are tested on Linux with the Keychain API simulated. Actual LaunchServices, Keychain permissions, and Gatekeeper behavior must still be verified on a Mac. The download is not a prebuilt native executable: the installed runtimes run the web app locally, with a graphical launcher.
+
+For maintainers: `npm run package:mac` builds the distributable; `npm run test:desktop` tests persistence after launcher exit, instance checking, and key reuse. The source-level `.app` wrapper also works from this checkout, but the distributable `.app` includes all source resources and copies them to writable Application Support.
 
 ## Run
 
@@ -45,6 +51,14 @@ For a production process, use `PYTHON=/workspace/first-app/.venv/bin/python npm 
 There is no authentication. Anyone who can reach the app can read, edit, download, or delete stored documents. For company-only use, restrict access through the company network/firewall; the app itself does not enforce company membership. Use HTTPS and persistent private storage for an actual company deployment. Hosting, server hardware, and electricity may still cost money; local processing has no API charges. Gemini free-tier availability, quotas, eligibility, and any charges depend on Google project/billing settings; this app cannot enforce a free-tier-only billing policy. It does not enable billing or automatically switch to a paid plan.
 
 The private SQLite database, selected photos, text, and generated files are stored in `.data/` or `DATA_DIR`. Back up the entire directory consistently. Uploaded originals are deleted after parsing; extracted text and selected photos remain in documents and generated snapshots. Deleting a draft does not delete earlier generated snapshots: delete those separately from history. No automatic retention cap or expiry is imposed; available disk space limits storage. Disk encryption, hosting, company-domain setup, backups, and network restrictions are deployment responsibilities.
+
+## Document formats
+
+履歴書 now uses a two-sheet sample layout: optional gender, current and alternate contact addresses, combined education/employment chronology, licenses, the combined motivation/strengths area, and applicant preferences. It excludes family/dependant/spouse questions. Date and alternate-contact information are editable. Long input adds continuation pages instead of being silently cut off.
+
+This is an independent recreation of the ministry sample's field structure. The official ministry page (`https://www.mhlw.go.jp/stf/newpage_kouseisaiyou030.html`) could not be retrieved because the cloud network blocked that host. It has not been compared with the actual official PDF/Excel file; do not represent it as an exact official-template reproduction or government-certified form. An uploaded official file is needed to verify an exact match.
+
+職務経歴書 uses a separate narrative layout with date/name, work summary, applicable skills, company-by-company history (period/business/employment type/role/duties), technical skills, qualifications, and self-PR. It does not export résumé photo, birth-date, gender, or address boxes. Current employment is an explicit editable flag; blank end dates alone do not imply a current job. PDF and editable Word exports follow the same distinct structures.
 
 ## Gemini setup and environment editor
 

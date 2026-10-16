@@ -102,75 +102,9 @@ def sections(d):
     return [('学歴',rows('education')),('職歴',rows('experience')),('免許・資格',rows('licenses')),('志望の動機',d.get('motivation','')),('特技・自己PR',d.get('strengths','')),('本人希望記入欄',d.get('preferences',''))]
 
 def export(d,fmt,out):
-    title='職務経歴書' if d.get('type')=='shokumukeirekisho' else '履歴書'
-    photo=None
-    if d.get('photo','').startswith('data:image/'):
-        photo=base64.b64decode(d['photo'].split(',',1)[1]); Image.open(io.BytesIO(photo)).verify()
-    if fmt=='docx':
-        from docx import Document
-        from docx.shared import Mm,Pt
-        from docx.oxml import OxmlElement
-        from docx.oxml.ns import qn
-        doc=Document(); sec=doc.sections[0]; sec.page_height=Mm(297); sec.page_width=Mm(210)
-        sec.top_margin=sec.bottom_margin=Mm(18); sec.left_margin=sec.right_margin=Mm(18)
-        style=doc.styles['Normal']; style.font.name='Noto Serif CJK JP'; style.font.size=Pt(10)
-        style.element.rPr.rFonts.set(qn('w:eastAsia'),'Noto Serif CJK JP')
-        doc.add_heading(title,0)
-        tab=doc.add_table(rows=1,cols=2); tab.style='Table Grid'
-        c=tab.cell(0,0)
-        for label,key in [('ふりがな','furigana'),('氏名','name'),('生年月日','birthDate'),('性別','gender'),('郵便番号','postalCode'),('現住所','address'),('住所ふりがな','addressKana'),('電話','phone'),('メール','email')]:
-            c.add_paragraph(label+'　'+str(d.get(key,'')))
-        if photo: tab.cell(0,1).paragraphs[0].add_run().add_picture(io.BytesIO(photo),width=Mm(30))
-        for label,value in sections(d):
-            doc.add_heading(label,2)
-            key={'学歴':'education','職歴':'experience','免許・資格':'licenses'}.get(label)
-            if key:
-                t=doc.add_table(rows=1,cols=2); t.style='Table Grid'
-                t.rows[0].cells[0].text='年月'; t.rows[0].cells[1].text=label
-                for r in d.get(key,[]) or [{}]:
-                    c=t.add_row().cells; c[0].text=r.get('date','')
-                    c[1].text='　'.join(filter(None,[r.get('name',''),('〜 '+r['end']) if r.get('end') else '',r.get('detail','')]))
-            else: doc.add_paragraph(value or '　')
-        doc.save(out)
-    else:
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        from reportlab.platypus import SimpleDocTemplate,Paragraph,Spacer,Table,LongTable,TableStyle,Image as RLImage,KeepTogether
-        from reportlab.lib.styles import ParagraphStyle
-        from reportlab.lib import colors
-        from reportlab.lib.enums import TA_CENTER
-        from xml.sax.saxutils import escape
-        font='/usr/share/fonts/truetype/magroup/NotoSerifJP.ttf'
-        if not os.path.exists(font): font=str(Path(__file__).parent/'fonts'/'NotoSerifJP.ttf')
-        pdfmetrics.registerFont(TTFont('JP',font))
-        normal=ParagraphStyle('jp',fontName='JP',fontSize=10,leading=17,wordWrap='CJK')
-        head=ParagraphStyle('head',parent=normal,fontSize=12,leading=21,spaceBefore=9,spaceAfter=5)
-        titleStyle=ParagraphStyle('title',parent=normal,fontSize=22,leading=32,alignment=TA_CENTER,spaceAfter=18)
-        para=lambda s: Paragraph(escape(str(s)).replace('\n','<br/>') or '　',normal)
-        story=[Paragraph(title,titleStyle)]
-        lines=[]
-        for label,key in [('ふりがな','furigana'),('氏名','name'),('生年月日','birthDate'),('性別','gender'),('郵便番号','postalCode'),('現住所','address'),('住所ふりがな','addressKana'),('電話','phone'),('メール','email')]:
-            lines.append(para(label+'　'+str(d.get(key,''))))
-        right=RLImage(io.BytesIO(photo),width=85,height=113,kind='proportional') if photo else para('写真')
-        t=Table([[lines,right]],colWidths=[390,100]); t.setStyle(TableStyle([('GRID',(0,0),(-1,-1),.5,colors.HexColor('#343b38')),('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),10),('TOPPADDING',(0,0),(-1,-1),10),('BOTTOMPADDING',(0,0),(-1,-1),10)])); story.append(t)
-        for label,value in sections(d):
-            key={'学歴':'education','職歴':'experience','免許・資格':'licenses'}.get(label)
-            if key:
-                table_rows=[[para('年月'),para(label)]]
-                for r in d.get(key,[]) or [{}]:
-                    date=r.get('date','')
-                    text='　'.join(filter(None,[r.get('name',''),('〜 '+r['end']) if r.get('end') else '',r.get('detail','')]))
-                    table_rows.append([para(date),para(text)])
-                t=LongTable(table_rows,colWidths=[70,420],repeatRows=1,splitInRow=1)
-                t.setStyle(TableStyle([('GRID',(0,0),(-1,-1),.5,colors.HexColor('#626b5a')),('BACKGROUND',(0,0),(-1,0),colors.HexColor('#f2f4ee')),('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),7),('TOPPADDING',(0,0),(-1,-1),7),('BOTTOMPADDING',(0,0),(-1,-1),7)]))
-                story.extend([Spacer(1,13),t,Spacer(1,4)])
-            else:
-                story.append(Paragraph(label,head))
-                for line in (value or '　').split('\n'): story.append(para(line))
-                story.append(Spacer(1,8))
-        def footer(c,doc):
-            c.setFont('JP',8); c.drawRightString(545,25,str(doc.page))
-        SimpleDocTemplate(out,pagesize=(595.28,841.89),leftMargin=52,rightMargin=52,topMargin=42,bottomMargin=42,title=title,author='M&A Group').build(story,onFirstPage=footer,onLaterPages=footer)
+    from export_documents import render_document
+    return render_document(d,fmt,out)
+
 if __name__=='__main__':
     try:
         if sys.argv[1]=='extract': print(json.dumps(extract(sys.argv[2],sys.argv[3]),ensure_ascii=False))

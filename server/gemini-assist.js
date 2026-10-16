@@ -1,11 +1,11 @@
 import {z} from 'zod';
 const text=z.string().max(25000);
-const row=z.object({date:text.optional(),end:text.optional(),name:text.optional(),detail:text.optional()});
+const row=z.object({date:text.optional(),end:text.optional(),name:text.optional(),detail:text.optional(),business:text.optional(),employmentType:text.optional(),position:text.optional(),current:z.boolean().optional()});
 const extraction=z.object({name:text.optional(),furigana:text.optional(),birthDate:text.optional(),gender:text.optional(),postalCode:text.optional(),address:text.optional(),addressKana:text.optional(),phone:text.optional(),email:text.optional(),education:z.array(row).max(100).optional(),experience:z.array(row).max(100).optional(),licenses:z.array(row).max(100).optional(),summary:text.optional(),skills:text.optional(),techSkills:text.optional(),motivation:text.optional(),strengths:text.optional(),preferences:text.optional(),additional:text.optional()});
 const writing=z.object({motivation:text,strengths:text,additional:text,summary:text});
 const fieldDescriptions={name:'氏名',furigana:'氏名のふりがな',birthDate:'生年月日 YYYY-MM-DD、不明なら空欄',gender:'性別',postalCode:'郵便番号',address:'住所',addressKana:'住所ふりがな',phone:'電話番号',email:'メールアドレス',summary:'職務要約',skills:'経験・スキル',techSkills:'技術スキル',motivation:'志望動機',strengths:'特技・自己PR',preferences:'本人希望',additional:'自己PR・補足事項'};
 const schemaText=Object.fromEntries(Object.entries(fieldDescriptions).map(([k,v])=>[k,{type:'STRING',description:v}]));
-const schemaRows={type:'ARRAY',items:{type:'OBJECT',properties:{date:{type:'STRING',description:'YYYY-MM。不明なら空欄'},end:{type:'STRING'},name:{type:'STRING'},detail:{type:'STRING'}}}};
+const schemaRows={type:'ARRAY',items:{type:'OBJECT',properties:{date:{type:'STRING',description:'YYYY-MM。不明なら空欄'},end:{type:'STRING'},name:{type:'STRING'},detail:{type:'STRING'},business:{type:'STRING'},employmentType:{type:'STRING'},position:{type:'STRING'},current:{type:'BOOLEAN',description:'現在在職中と資料に明記されている場合のみtrue'}}}};
 function responseSchema(task){if(task==='transcribe')return {type:'OBJECT',properties:{text:{type:'STRING'},warnings:{type:'ARRAY',items:{type:'STRING'}}},required:['text']};return {type:'OBJECT',properties:task==='write'?Object.fromEntries([...['motivation','strengths','additional','summary'].map(k=>[k,schemaText[k]]),['warnings',{type:'ARRAY',items:{type:'STRING'}}]]):{...schemaText,education:schemaRows,experience:schemaRows,licenses:schemaRows,warnings:{type:'ARRAY',items:{type:'STRING'}}},...(task==='write'?{required:['motivation','strengths','additional','summary']}: {})};}
 export async function geminiAssist(input,{apiKey,model='gemini-2.5-flash',fetchImpl=fetch,timeoutMs=90000}={}){
  if(!apiKey)throw Error('Geminiのキーが設定されていません。');
