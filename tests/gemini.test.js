@@ -8,6 +8,22 @@ test('extraction preserves valid fields and rows when optional values are malfor
  assert.equal(result.mode,'gemini');assert.equal(result.data.name,'山田 太郎');assert.equal(result.data.alternateAddress,'大阪府');assert.equal(result.data.birthDate,undefined);assert.equal(result.data.experience.length,2);assert.equal(result.data.experience[1].current,true);assert.equal(result.data.languages[0].qualification,'TOEIC 800');assert.equal(result.data.languages[0].level,undefined);assert.equal(result.data.summary,'営業を担当');assert.match(result.warnings.join(' '),/birthDate/);assert.match(result.warnings.join(' '),/level/);
 });
 test('Gemini extraction reserves output for complete data and reports token truncation explicitly',async()=>{
- let config,schema;await geminiAssist({task:'extract',text:'fixture'},{apiKey:'test-placeholder',fetchImpl:async(url,options)=>{config=JSON.parse(options.body).generationConfig;schema=config.responseSchema;return ok({address:'東京都',phone:'090-1234-5678',experience:[{name:'会社A',date:'2020-04'}]});}});assert.equal(config.thinkingConfig.thinkingBudget,0);assert.equal(config.maxOutputTokens,16384);for(const field of ['address','phone','education','experience','licenses'])assert.ok(schema.required.includes(field));
+ let config,schema;await geminiAssist({task:'extract',text:'fixture'},{apiKey:'test-placeholder',fetchImpl:async(url,options)=>{config=JSON.parse(options.body).generationConfig;schema=config.responseSchema;return ok({address:'東京都',phone:'090-1234-5678',experience:[{name:'会社A',date:'2020-04'}]});}});assert.equal(config.thinkingConfig.thinkingBudget,0);assert.equal(config.maxOutputTokens,16384);for(const field of ['address','phone','education','experience','licenses'])assert.ok(schema.required.includes(field));assert.ok(schema.properties.languages.items.properties.level.enum.every(v=>typeof v==='string'&&v.length>0));
  await assert.rejects(()=>geminiAssist({task:'extract'},{apiKey:'test-placeholder',fetchImpl:async()=>new Response(JSON.stringify({candidates:[{finishReason:'MAX_TOKENS'}]}))}),/長さの上限/);
+});
+test('400 schema rejection retries compatible JSON mode once without losing any document pages',async()=>{
+ const requests=[];const result=await geminiAssist({task:'extract',text:'document fixture',pages:['data:image/png;base64,YWJj']},{apiKey:'test-placeholder',fetchImpl:async(url,options)=>{
+  const body=JSON.parse(options.body);requests.push(body);
+  if(requests.length===1)return new Response(JSON.stringify({error:{status:'INVALID_ARGUMENT',message:'The response schema has too many states'}}),{status:400});
+  return ok({name:'テスト 太郎',address:'東京都千代田区1-1',phone:'090-1234-5678',education:[{date:'2015-04',name:'大学 入学'}],experience:[{date:'2019-04',end:'2024-03',name:'会社A'}],licenses:[{date:'2018-06',name:'資格A'}]});
+ }});
+ assert.equal(requests.length,2);assert.equal(requests[1].generationConfig.responseSchema,undefined);assert.equal(requests[1].generationConfig.thinkingConfig,undefined);assert.equal(requests[1].contents[0].parts[1].inlineData.data,'YWJj');assert.match(requests[1].contents[0].parts[0].text,/education/);assert.equal(result.mode,'gemini');assert.equal(result.data.phone,'090-1234-5678');assert.equal(result.data.experience.length,1);assert.equal(result.data.licenses.length,1);
+});
+test('400 invalid or blocked keys are actionable, never retried, and never expose raw provider data',async()=>{
+ for(const [error,code] of [[{message:'API key not valid. sensitive-value',details:[{reason:'API_KEY_INVALID'}]},'INVALID_API_KEY'],[{message:'Your API key was reported as leaked. sensitive-value'},'KEY_BLOCKED']]){
+  let calls=0;await assert.rejects(()=>geminiAssist({task:'extract',text:'private document'},{apiKey:'test-placeholder',fetchImpl:async()=>{calls++;return new Response(JSON.stringify({error}),{status:400});}}),e=>e.code===code&&!e.message.includes('sensitive-value')&&!e.message.includes('private document'));assert.equal(calls,1);
+ }
+});
+test('a second 400 stops the import rather than returning a local success',async()=>{
+ let calls=0;await assert.rejects(()=>geminiAssist({task:'extract',text:'fixture'},{apiKey:'test-placeholder',fetchImpl:async()=>{calls++;return new Response(JSON.stringify({error:{status:'INVALID_ARGUMENT',message:'invalid configuration private value'}}),{status:400});}}),e=>e.code==='REQUEST_REJECTED'&&!e.message.includes('private value'));assert.equal(calls,2);
 });

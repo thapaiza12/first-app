@@ -69,7 +69,7 @@ This is an independent recreation of the ministry sample's field structure. The 
 
 When configured, uploading an existing document sends its text and first eight page images to Gemini. Job-offer/career uploads can also be transcribed with Gemini. Drafting sends job/career text, notes, and relevant experience fields; it omits separate name, phone, email, and photo fields, although uploaded source text may itself contain personal information. Follow company consent and data-handling rules and Google’s applicable data-use terms before submitting applicant information. There is no automatic hosted request in local mode.
 
-If Gemini fails, times out, exhausts quota, or returns invalid/blocked output, the app shows an explanatory warning and uses local OCR/rules/templates. The result must not be mistaken for a Gemini-generated draft. All generated/extracted values are reviewed before application and remain editable.
+If Gemini fails, times out, exhausts quota, or returns invalid/blocked output, the API returns an error and the review screen stops the import. It never silently substitutes local extraction for a configured Gemini provider. Invalid/blocked keys are classified without exposing raw provider errors. A generic 400 request rejection is retried once with compatible JSON mode, preserving the text and images. Staff can retry the retained upload or test connectivity in settings. Local OCR/rules/templates remain available when Gemini is deliberately unconfigured. All generated/extracted values are reviewed before application and remain editable.
 
 Earlier setup drafts declared `AI_API_KEY` (OpenAI) and `COMPANY_PASSWORD`. Neither is used. Delete those obsolete entries from **Secrets** and **Environment variables** in the environment editor. The draft tool supports additive requirements only, so it cannot delete these old metadata entries programmatically. No company password should be supplied.
 
@@ -81,11 +81,11 @@ npm run build
 npm run test:e2e
 ```
 
-Tests cover Gemini request structure, response validation, quota/error handling and explicit local fallback with simulated service responses, plus local extraction, Japanese era dates, missing/ambiguous information, template drafts, actual Japanese OCR, PDF/Word exports, applicant images from existing PDF/Word files, Excel/PowerPoint reading, retained history above 20 files, production startup without authentication, and browser workflows/mobile layout. Tests use temporary storage and synthetic applicant data. The review-dialog interaction test uses simulated helper responses; actual local helper functionality is covered by backend and workflow tests.
+Tests cover Gemini request structure, response validation, quota/error handling and 400 compatibility recovery, invalid/blocked keys, failed-import protection and retry with simulated service responses, plus local extraction, Japanese era dates, missing/ambiguous information, template drafts, actual Japanese OCR, PDF/Word exports, applicant images from existing PDF/Word files, Excel/PowerPoint reading, retained history above 20 files, production startup without authentication, and browser workflows/mobile layout. Tests use temporary storage and synthetic applicant data. The review-dialog interaction test uses simulated helper responses; actual local helper functionality is covered by backend and workflow tests.
 
 The bundled Noto Serif JP font is licensed under the SIL Open Font License (`server/fonts/OFL.txt`). It is a Japanese Mincho font, not a government certification. The supplied workflow reference informs the section flow and preview. Export pagination and spacing can differ from the continuous onscreen preview.
 
-Live Gemini access is not established by mocked tests. It requires a privately configured key and a successful real provider request; no live Gemini validation has been completed yet.
+Live Gemini validation on 2026-10-16 reproduced HTTP 400 from the language-level schema enum containing an empty string. Removing that invalid provider enum value produced HTTP 200 on the first attempt. A synthetic two-page Japanese résumé PDF was then read through the actual PDF reader and Gemini service: name, birth date, address, phone, both education entries, employment, qualification, motivation, and preferences passed assertions. This verifies that synthetic fixture, not every applicant document or Mac configuration. See `docs/gemini-validation.md`.
 
 ## Name and readability
 

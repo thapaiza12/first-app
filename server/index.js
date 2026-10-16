@@ -47,7 +47,7 @@ app.post('/api/assist',async(req,res,next)=>{try{
  const input=z.object({task:z.enum(['extract','write','transcribe']),text:z.string().max(100000).optional().default(''),pages:z.array(z.string().max(12000000).regex(/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/)).max(8).optional().default([]),document:docSchema.optional()}).parse(req.body);
  if(input.task==='write'&&!input.document)return res.status(400).json({error:'応募者情報を入力してください。'});
  if(input.task==='write'&&!input.document.jobText.trim()&&!input.document.jobNotes.trim())return res.status(400).json({error:'求人票または求人についてのメモを追加してください。'});
- if(process.env.GEMINI_API_KEY){try{return res.json(await geminiAssist(input,{apiKey:process.env.GEMINI_API_KEY,model:process.env.GEMINI_MODEL||'gemini-2.5-flash'}));}catch(error){const fallback=assist(input);return res.json({...fallback,warnings:[error.message,'今回はローカル処理に切り替えました。生成AIではなく、読取ルール・定型文による結果です。',...fallback.warnings]});}}
+ if(process.env.GEMINI_API_KEY){try{return res.json(await geminiAssist(input,{apiKey:process.env.GEMINI_API_KEY,model:process.env.GEMINI_MODEL||'gemini-2.5-flash'}));}catch(error){return res.status(502).json({error:error.message,code:error.code||'GEMINI_FAILED',mode:'gemini-error'});}}
  res.json(assist(input));
 }catch(e){next(e);}});
 app.post('/api/resume-layout',async(req,res,next)=>{try{const document=parseDoc(req.body);res.json(await python(['check'],document));}catch(e){next(e);}});
