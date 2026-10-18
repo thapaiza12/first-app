@@ -24,26 +24,6 @@ macOS may ask permission for Python to access the Keychain; allow it for this
 app if you want to use the saved key. You can change it later from the app's
 Gemini/local-assist settings window. Google free-tier limits and billing apply.
 
-GEMINI + OLLAMA (optional, no API key for Ollama)
-Install Ollama from https://ollama.com/download/mac and open it.
-In Ollama's model selector, search for gemma3:4b and download it once.
-This downloads several GB. A Mac with 16 GB RAM is recommended; speed and
-availability depend on your Mac and Ollama's macOS requirements.
-Keep Ollama open while using the CV app.
-
-Open the CV app's AI settings. Choose:
-- Auto: Gemini first; quota/connection failures restart the request on Ollama.
-- Gemini only: no automatic switch.
-- Ollama only: all AI requests stay on this Mac; Google is not used.
-- OCR/templates only: no generative model.
-Save AI settings, then use the connection-check button.
-The same source quotations and factual checks apply to Ollama drafts.
-Unverified claims never trigger a switch to a less strict workflow.
-Cloud Ollama models are refused in local-only mode. Download the local model.
-Long documents may exceed the local model's context limit; the app reports
-this instead of silently cutting off source material. Split such documents
-or select Gemini. Actual Ollama performance on your Mac is not verified here.
-
 EVERYDAY USE
 Click M&A Group in Applications/Dock. No Terminal window is opened.
 Closing the browser does NOT stop the background app. Click the icon again to
@@ -80,17 +60,7 @@ skills. The browser tab is named M&A CV creation; its address remains local.
 Install by stopping the old background app, then replacing the application in
 Applications. Documents and the Keychain key are kept outside the app bundle.
 
-8 GB MACS — VERSION 0.6.1
-Ollama now uses a smaller 8K context and bounded response size. Text-based
-PDFs can use native text directly; scanned pages are processed sequentially.
-The AI waiting screen shows elapsed time and a Cancel (処理を中止) button.
-No data is silently cut off to meet the limits. Large documents may need
-splitting or Gemini. Factual verification is still required before drafts
-are shown. Local inference speed has not been measured on your Mac.
-If an earlier request is stuck, quit and reopen Ollama before trying this
-version. Keep gemma3:4b installed; no model, Node or Python reinstall is needed.
-
-GEMINI + GROQ — VERSION 0.7.0
+GEMINI + GROQ — VERSION 0.7.1
 1. Create your Groq API key at https://console.groq.com/keys.
 2. Open this updated CV app, then open AI settings.
 3. Click Groqキーを設定. Paste the key ONLY into the hidden Mac dialog.
@@ -109,3 +79,6 @@ not guaranteed. The current Groq free-plan limits and live Japanese document
 quality were not verified in the development environment.
 
 Never paste keys in chat, the model-name field, or a document.
+
+Version 0.7.1 uses Gemini + Groq by default. Legacy Ollama selections are
+automatically migrated. No Gemma model or Ollama installation is needed.

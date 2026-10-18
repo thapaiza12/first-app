@@ -22,9 +22,9 @@ app.use((req,res,next)=>{res.set('X-Content-Type-Options','nosniff');res.set('Re
 app.use('/api',(req,res,next)=>{const origin=req.get('origin');if(!['GET','HEAD','OPTIONS'].includes(req.method)&&origin){try{if(new URL(origin).host!==req.get('host'))return res.status(403).json({error:'別サイトからの操作は許可されていません。'});}catch{return res.sendStatus(403);}}next();});
 app.get('/api/font',(req,res)=>{res.set('Cache-Control','public,max-age=86400');res.sendFile(path.join(root,'server/fonts/NotoSerifJP.ttf'));});
 db.exec('CREATE TABLE IF NOT EXISTS ai_settings(id INTEGER PRIMARY KEY, payload TEXT NOT NULL)');
-const aiSettingsSchema=z.object({mode:z.enum(['auto','gemini','ollama','local','gemini-groq','groq']),ollamaModel:z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/),groqModel:z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/).optional().default('llama-3.3-70b-versatile')});
-function aiSettings(){const row=db.prepare('SELECT payload FROM ai_settings WHERE id=1').get();return {mode:'auto',ollamaModel:process.env.OLLAMA_MODEL||'gemma3:4b',groqModel:process.env.GROQ_MODEL||'llama-3.3-70b-versatile',...(row?JSON.parse(row.payload):{})};}
-app.get('/api/ai/settings',async(req,res)=>{const settings=aiSettings();res.json({...settings,ollama:await ollamaStatus({model:settings.ollamaModel,baseUrl:process.env.OLLAMA_BASE_URL})});});
+const aiSettingsSchema=z.object({mode:z.enum(['auto','gemini','ollama','local','gemini-groq','groq']),ollamaModel:z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/).optional(),groqModel:z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/).optional().default('llama-3.3-70b-versatile')});
+function aiSettings(){const row=db.prepare('SELECT payload FROM ai_settings WHERE id=1').get();const settings={mode:'gemini-groq',groqModel:process.env.GROQ_MODEL||'llama-3.3-70b-versatile',...(row?JSON.parse(row.payload):{})};if(['auto','ollama'].includes(settings.mode))settings.mode='gemini-groq';delete settings.ollamaModel;return settings;}
+app.get('/api/ai/settings',async(req,res)=>{const settings=aiSettings();res.json(settings);});
 app.put('/api/ai/settings',(req,res)=>{const settings=aiSettingsSchema.parse(req.body);db.prepare('INSERT INTO ai_settings(id,payload) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload').run(JSON.stringify(settings));res.json(settings);});
 app.post('/api/ai/check',async(req,res,next)=>{try{
  const {provider}=z.object({provider:z.enum(['gemini','groq'])}).parse(req.body);

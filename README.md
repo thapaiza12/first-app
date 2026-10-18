@@ -97,23 +97,9 @@ Live Gemini validation on 2026-10-16 reproduced HTTP 400 from the language-level
 
 The product/browser-tab title is M&A CV creation. Form controls use black text at 16px or larger, with larger labels and responsive layouts. The loopback address remains a working local URL; a phrase containing spaces and an ampersand cannot replace a browser hostname. No hosts-file edits, root privileges, or custom DNS are requested.
 
-## Gemini and Ollama
+## Gemini + Groq (0.7.1)
 
-AI settings persist in the existing SQLite data directory. Default `auto` prefers Gemini when its key is configured, and restarts the complete request on local Ollama after quota, connection, unavailable-model or provider failures. Factual/verification, credential and document-validation failures do not bypass checks through another model. With no key, automatic mode uses an available Ollama service; otherwise it retains offline OCR/templates. Explicit `ollama` never sends data to Gemini. Explicit `gemini` never falls back. Both providers reuse extraction validation and the full cited-fact writing/verification pipeline.
-
-On Mac install/open [Ollama](https://ollama.com/download/mac), then download `gemma3:4b` from its model selector. This is optional and separate from the app ZIP; no API key is required. A local model and several GB of disk space are required; 16 GB RAM is recommended. Select/save the mode and model inside app settings. No terminal is required for routine use. PDF/image input requires a vision-capable local model. Cloud models, external server addresses and redirects are refused. The backend defaults to `http://127.0.0.1:11434`; optional `OLLAMA_BASE_URL` must be a loopback HTTP origin and `OLLAMA_MODEL` sets the initial model name. Neither is a secret.
-
-Local context is deliberately bounded: prompts above 16,000 characters are rejected rather than silently truncated; the chat context is 8,192 tokens with a maximum 2,048-token response for 8 GB Macs. Near-limit or incomplete replies are withheld. A local operation has a three-minute total deadline. Local model latency, Japanese reading quality and hardware compatibility require testing on the user's Mac. Transport and provider-selection tests use a simulated Ollama service, not downloaded model weights. Automatic mode can send documents to Google first; use Ollama-only for local processing. Gemini quota still applies to its requests. No paid plan is enabled by this app.
-
-### 8 GB Mac import improvements (0.6.1)
-
-Suitable text-based PDFs use all extracted native text without also asking Ollama to inspect page images. The reader conservatively disables this route for short/invalid text or substantial raster sections. Scanned multi-page PDFs are transcribed one page at a time, then their complete transcriptions are organized in one text request; those transcriptions become the retained source evidence. Source material is not shortened to fit. Context/response limits can require splitting long documents or using Gemini.
-
-The busy screen shows elapsed time and an AI cancel button. Browser cancellation closes the backend provider request; active Ollama/Gemini HTTP calls use the abort signal, and cancelled results cannot change the form. Existing factual verification remains enabled. These changes reduce configured memory demand; speed on the user's M1/8 GB hardware has not been benchmarked. Quit/reopen Ollama before testing the new build if an old request is still running.
-
-## Gemini + Groq (0.7.0)
-
-Select **Geminiで読取 ＋ Groqで文章作成** in AI settings and save. The selected Groq model defaults to `llama-3.3-70b-versatile` and can be changed without replacing the app. This mode does not call Ollama. Previous provider preferences and local modes remain available; installing an update does not silently switch the saved mode.
+Select **Geminiで読取 ＋ Groqで文章作成** in AI settings and save. The selected Groq model defaults to `llama-3.3-70b-versatile` and can be changed without replacing the app. This mode does not call Ollama. Gemini + Groq is the default. Saved legacy auto/Ollama selections migrate to this mode; Ollama settings and model downloads have been removed from the interface.
 
 Gemini handles document/image extraction. Groq handles drafting and verification through the identical citation-based workflow. On eligible quota/network/provider failures, text-capable tasks can restart on the other cloud provider. Validation failures never bypass the checks. The Groq model is text-only: native-text PDFs may use Groq when Gemini is unavailable, but scanned PDFs/photos stop with an explanation rather than silently losing their image content.
 

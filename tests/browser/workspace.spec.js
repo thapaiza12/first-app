@@ -29,10 +29,13 @@ test('unverified writing is withheld, preserves original text, and a verified re
  await expect(page.getByRole('dialog')).toContainText('下書きを確認できませんでした');await expect(page.getByRole('button',{name:'選択した項目を反映'})).toHaveCount(0);await expect(page.getByLabel('志望の動機',{exact:true})).toHaveValue('応募者が記入した原文');
  await page.getByRole('button',{name:'AIで再試行'}).click();await expect(page.getByRole('dialog')).toContainText('営業経験は確認できません');await page.getByText('文章の根拠を確認（応募者資料との照合済み）').click();await expect(page.getByRole('dialog')).toContainText('Python開発を担当');await page.getByRole('button',{name:'選択した項目を反映'}).click();await expect(page.getByLabel('志望の動機',{exact:true})).toHaveValue(/Python開発/);
 });
-test('AI settings select Ollama and show local processing without the Google upload notice',async({page})=>{
- let selected=false;await page.route('**/api/status',r=>r.fulfill({json:{assistMode:selected?'ollama':'gemini',geminiConfigured:true,aiSettings:{mode:selected?'ollama':'auto',ollamaModel:'gemma3:4b'},ollama:{available:true,ready:true,model:'gemma3:4b'},loginRequired:false}}));
- await page.route('**/api/ai/settings',r=>{const body=r.request().postDataJSON();expect(body.mode).toBe('ollama');expect(body.ollamaModel).toBe('gemma3:4b');selected=true;return r.fulfill({json:body});});
- await page.goto('/');await page.locator('.save-status button').click();await page.getByLabel('AIの選択').selectOption('ollama');await page.getByRole('button',{name:'AI設定を保存'}).click();await expect(page.getByRole('dialog')).toContainText('AI設定を保存しました');await page.getByRole('button',{name:'閉じる',exact:true}).click();await expect(page.locator('.local-notice')).toContainText('Ollama');await expect(page.getByText('アップロード後、資料のテキスト・先頭8ページの画像をGeminiへ送信して読み取ります。')).toHaveCount(0);
+test('AI settings offer Gemini and Groq without Ollama model downloads',async({page})=>{
+ await page.goto('/');await page.locator('.save-status button').click();
+ await expect(page.getByRole('dialog')).not.toContainText('gemma3:4b');
+ await expect(page.getByRole('dialog')).not.toContainText('Ollama');
+ await page.getByLabel('AIの選択').selectOption('gemini-groq');
+ await page.getByRole('button',{name:'AI設定を保存'}).click();
+ await expect(page.getByRole('dialog')).toContainText('AI設定を保存しました');
 });
 test('a slow import shows elapsed time and can be cancelled without applying late results',async({page})=>{
  let release,called;const blocked=new Promise(r=>release=r),started=new Promise(r=>called=r);
