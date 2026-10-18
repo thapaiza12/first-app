@@ -4,7 +4,8 @@ import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
 import {assist} from './local-assist.js';
 import {normalizeExperience} from '../src/employment.js';
-import {geminiAssist} from './gemini-assist.js';
+import {aiAssist} from './ai-assist.js';
+import {ollamaStatus} from './ollama-assist.js';
 import {spawn} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,7 +21,14 @@ app.use((req,res,next)=>{res.set('X-Content-Type-Options','nosniff');res.set('Re
 // Same-origin writes only. Do not trust forwarded host headers for the origin check.
 app.use('/api',(req,res,next)=>{const origin=req.get('origin');if(!['GET','HEAD','OPTIONS'].includes(req.method)&&origin){try{if(new URL(origin).host!==req.get('host'))return res.status(403).json({error:'別サイトからの操作は許可されていません。'});}catch{return res.sendStatus(403);}}next();});
 app.get('/api/font',(req,res)=>{res.set('Cache-Control','public,max-age=86400');res.sendFile(path.join(root,'server/fonts/NotoSerifJP.ttf'));});
-app.get('/api/status',(req,res)=>res.json({assistMode:process.env.GEMINI_API_KEY?'gemini':'local',geminiConfigured:!!process.env.GEMINI_API_KEY,desktopInstance:process.env.MA_DESKTOP_INSTANCE||null,desktopMode:!!process.env.MA_DESKTOP_INSTANCE,loginRequired:false,mode:production?'production':'development'}));
+db.exec('CREATE TABLE IF NOT EXISTS ai_settings(id INTEGER PRIMARY KEY, payload TEXT NOT NULL)');
+const aiSettingsSchema=z.object({mode:z.enum(['auto','gemini','ollama','local']),ollamaModel:z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/)});
+function aiSettings(){const row=db.prepare('SELECT payload FROM ai_settings WHERE id=1').get();return row?JSON.parse(row.payload):{mode:'auto',ollamaModel:process.env.OLLAMA_MODEL||'gemma3:4b'};}
+app.get('/api/ai/settings',async(req,res)=>{const settings=aiSettings();res.json({...settings,ollama:await ollamaStatus({model:settings.ollamaModel,baseUrl:process.env.OLLAMA_BASE_URL})});});
+app.put('/api/ai/settings',(req,res)=>{const settings=aiSettingsSchema.parse(req.body);db.prepare('INSERT INTO ai_settings(id,payload) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload').run(JSON.stringify(settings));res.json(settings);});
+app.get('/api/status',async(req,res)=>{const settings=aiSettings();const local=await ollamaStatus({model:settings.ollamaModel,baseUrl:process.env.OLLAMA_BASE_URL});const selected=settings.mode==='auto'?(process.env.GEMINI_API_KEY?'gemini':local.ready?'ollama':'local'):settings.mode;
+ res.json({assistMode:selected,aiSettings:settings,ollama:local,geminiConfigured:!!process.env.GEMINI_API_KEY,desktopInstance:process.env.MA_DESKTOP_INSTANCE||null,desktopMode:!!process.env.MA_DESKTOP_INSTANCE,loginRequired:false,mode:production?'production':'development'});
+});
 // Desktop controls are available only to the loopback-bound Mac background process.
 app.post('/api/desktop/settings',(req,res)=>{
  if(!process.env.MA_DESKTOP_INSTANCE||process.env.NODE_ENV==='production')return res.sendStatus(404);
@@ -47,8 +55,7 @@ app.post('/api/assist',async(req,res,next)=>{try{
  const input=z.object({task:z.enum(['extract','write','transcribe']),text:z.string().max(100000).optional().default(''),pages:z.array(z.string().max(12000000).regex(/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/)).max(8).optional().default([]),document:docSchema.optional()}).parse(req.body);
  if(input.task==='write'&&!input.document)return res.status(400).json({error:'応募者情報を入力してください。'});
  if(input.task==='write'&&!input.document.jobText.trim()&&!input.document.jobNotes.trim())return res.status(400).json({error:'求人票または求人についてのメモを追加してください。'});
- if(process.env.GEMINI_API_KEY){try{return res.json(await geminiAssist(input,{apiKey:process.env.GEMINI_API_KEY,model:process.env.GEMINI_MODEL||'gemini-2.5-flash'}));}catch(error){return res.status(502).json({error:error.message,code:error.code||'GEMINI_FAILED',mode:'gemini-error'});}}
- res.json(assist(input));
+ try{return res.json(await aiAssist(input,{...aiSettings(),apiKey:process.env.GEMINI_API_KEY,geminiModel:process.env.GEMINI_MODEL,ollamaBaseUrl:process.env.OLLAMA_BASE_URL}));}catch(error){return res.status(502).json({error:error.message,code:error.code||'AI_FAILED',mode:'ai-error'});}
 }catch(e){next(e);}});
 app.post('/api/resume-layout',async(req,res,next)=>{try{const document=parseDoc(req.body);res.json(await python(['check'],document));}catch(e){next(e);}});
 app.post('/api/export',async(req,res,next)=>{try{const {id,format,document}=z.object({id:z.string().uuid(),format:z.enum(['pdf','docx']),document:docSchema}).parse(req.body);if(!document.confirmed)return res.status(400).json({error:'内容を確認してチェックを入れてください。'});if(!document.name.trim())return res.status(400).json({error:'氏名を入力してください。'});const historyId=randomUUID();const file=path.join(dataDir,`${historyId}.${format}`);await python(['export',format,file],document);db.prepare('INSERT INTO history VALUES(?,?,?,?,?,?)').run(historyId,id,JSON.stringify(document),format,file,new Date().toISOString());res.json({id:historyId,url:`/api/history/${historyId}/download`});}catch(e){next(e);}});

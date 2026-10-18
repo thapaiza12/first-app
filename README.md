@@ -96,3 +96,11 @@ Live Gemini validation on 2026-10-16 reproduced HTTP 400 from the language-level
 ## Name and readability
 
 The product/browser-tab title is M&A CV creation. Form controls use black text at 16px or larger, with larger labels and responsive layouts. The loopback address remains a working local URL; a phrase containing spaces and an ampersand cannot replace a browser hostname. No hosts-file edits, root privileges, or custom DNS are requested.
+
+## Gemini and Ollama
+
+AI settings persist in the existing SQLite data directory. Default `auto` prefers Gemini when its key is configured, and restarts the complete request on local Ollama after quota, connection, unavailable-model or provider failures. Factual/verification, credential and document-validation failures do not bypass checks through another model. With no key, automatic mode uses an available Ollama service; otherwise it retains offline OCR/templates. Explicit `ollama` never sends data to Gemini. Explicit `gemini` never falls back. Both providers reuse extraction validation and the full cited-fact writing/verification pipeline.
+
+On Mac install/open [Ollama](https://ollama.com/download/mac), then download `gemma3:4b` from its model selector. This is optional and separate from the app ZIP; no API key is required. A local model and several GB of disk space are required; 16 GB RAM is recommended. Select/save the mode and model inside app settings. No terminal is required for routine use. PDF/image input requires a vision-capable local model. Cloud models, external server addresses and redirects are refused. The backend defaults to `http://127.0.0.1:11434`; optional `OLLAMA_BASE_URL` must be a loopback HTTP origin and `OLLAMA_MODEL` sets the initial model name. Neither is a secret.
+
+Local context is deliberately bounded: prompts above 16,000 characters are rejected rather than silently truncated; the chat context is 32,768 tokens. Local model latency, Japanese reading quality and hardware compatibility require testing on the user's Mac. Transport and provider-selection tests use a simulated Ollama service, not downloaded model weights. Automatic mode can send documents to Google first; use Ollama-only for local processing. Gemini quota still applies to its requests. No paid plan is enabled by this app.
