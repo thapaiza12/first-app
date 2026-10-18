@@ -68,3 +68,15 @@ test('unproven outcomes, inflated abilities and numbers are blocked even when th
 test('quota failure during corrective regeneration never releases the rejected draft',async()=>{
  let calls=0;const outputs=[plan,bad,{checks:[check('motivation:0','unsupported')]}];await assert.rejects(()=>groundedWrite(doc,{generate:async()=>{calls++;if(calls===4){const e=Error('quota');e.code='QUOTA_EXCEEDED';throw e;}return outputs.shift();}}),e=>e.code==='QUOTA_EXCEEDED'&&!e.data);assert.equal(calls,4);
 });
+test('malformed evidence is repaired once from original sources without weakening citations',async()=>{
+ const requests=[];
+ const result=await groundedWrite(doc,{generate:sequence([{facts:null,matches:null,gaps:null},plan,honest,verified],requests)});
+ assert.equal(result.grounding.verified,true);assert.equal(requests.length,4);
+ assert.match(requests[1].prompt,/JSON形式の修正/);assert.match(requests[1].prompt,/Pythonで社内ツールを開発/);
+ assert.doesNotMatch(requests[1].prompt,/"facts":null/);
+});
+test('persistent malformed evidence returns a format error without draft or source data',async()=>{
+ let calls=0;
+ await assert.rejects(()=>groundedWrite(doc,{generate:async()=>{calls++;return {facts:'private response',matches:[],gaps:[]};}}),e=>e.code==='INVALID_EVIDENCE'&&!e.message.includes('private response')&&!e.data);
+ assert.equal(calls,2);
+});

@@ -39,12 +39,26 @@ function unsupportedUpgrades(sentence,quotes){
  const evidence=normalize(quotes.map(q=>q.quote).join('\n'));
  return [...upgrades.filter(term=>sentence.includes(term)&&!evidence.includes(term)),...(sentence.match(/\d+(?:\.\d+)?(?:万円|億円|年間|[%％年人名社件倍点])/g)||[]).filter(value=>!evidence.includes(normalize(value)))];
 }
+// Repair structure once from the original sources. Never coerce claims, drop
+// invalid facts, or send provider response contents into diagnostic messages.
+async function checkedGenerate(generate,prompt,responseSchema,validator,options){
+ let correction='';let parsed;
+ prompt+='\n形式制約：factsは60件以内、matches・gapsは各30件以内。各文字列4000文字以内。各項目の文は12件以内・1文1200文字以内。checksは48件以内。必須一覧は省略せず、不明な一覧はnullではなく[]を返してください。';
+ for(let attempt=0;attempt<2;attempt++){
+  const result=await generate(prompt+correction,responseSchema,options);
+  parsed=validator.safeParse(result);
+  if(parsed.success)return parsed.data;
+  const issues=parsed.error.issues.slice(0,12).map(issue=>({field:issue.path.join('.'),code:issue.code}));
+  correction='\n【JSON形式の修正】前回の応答は形式検査を通過しませんでした。元の資料から作り直し、次のスキーマの全必須項目を返してください。factsは60件以内、matches・gapsは各30件以内、各文字列は4000文字以内、各項目の文は12件以内・1文1200文字以内、checksは48件以内としてください。不明な一覧はnullではなく空配列にしてください。根拠や引用を創作しないでください。\n'+JSON.stringify({issues,schema:responseSchema});
+ }
+ throw parsed.error;
+}
 export async function groundedWrite(document,{generate}={}){
  const {sources,job,manualOnly,ignoredNotes}=writingSources(document);
  if(!job.trim())throw new GroundingError('MISSING_JOB','求人票または求人メモを追加してください。');
  if(!sources.length)throw new GroundingError('MISSING_APPLICANT_EVIDENCE','応募者の経歴資料または実際の職歴・スキルを追加してください。求人票や以前の生成文だけでは経歴を作成できません。');
  let plan;
- try{plan=planSchema.parse(await generate(`【STEP 1: EVIDENCE】\n${policy}\n応募者資料から確認できる事実だけを抽出し、それぞれid、claim、sourceId、原文の連続した引用quoteを付けてください。希望職種や未経験の記述を経験として抽出しないでください。求人との一致点matchesには原文のjobQuoteと対応するfactIdsを付け、不一致はgapsへ記載してください。一致点がなくても応募者の実際の経験をfactsへ残してください。quoteは要約・改変禁止です。担当業務から成果や能力を推論することも禁止です。\n${JSON.stringify({applicantSources:sources,jobRequirements:job})}`,planResponse));}catch(e){if(e instanceof z.ZodError)throw new GroundingError('INVALID_EVIDENCE','経歴の根拠を確認できませんでした。下書きは作成していません。');throw e;}
+ try{plan=await checkedGenerate(generate,`【STEP 1: EVIDENCE】\n${policy}\n応募者資料から確認できる事実だけを抽出し、それぞれid、claim、sourceId、原文の連続した引用quoteを付けてください。希望職種や未経験の記述を経験として抽出しないでください。求人との一致点matchesには原文のjobQuoteと対応するfactIdsを付け、不一致はgapsへ記載してください。一致点がなくても応募者の実際の経験をfactsへ残してください。quoteは要約・改変禁止です。担当業務から成果や能力を推論することも禁止です。\n${JSON.stringify({applicantSources:sources,jobRequirements:job})}`,planResponse,planSchema);}catch(e){if(e instanceof z.ZodError)throw new GroundingError('INVALID_EVIDENCE','AIが経歴の根拠を所定の形式で返さず、自動修正でも完了しませんでした。経歴の不足と判定したものではありません。下書きは反映していません。');throw e;}
  const facts=plan.facts.filter((f,i,all)=>all.findIndex(v=>v.id===f.id)===i&&sources.some(s=>s.id===f.sourceId&&includesQuote(s.text,f.quote)));
  if(!facts.length)throw new GroundingError('NO_VERIFIABLE_FACTS','応募者資料から引用できる経歴・スキルが確認できませんでした。経歴資料を確認してください。');
  const factMap=new Map(facts.map(f=>[f.id,f]));
@@ -57,11 +71,11 @@ export async function groundedWrite(document,{generate}={}){
  let feedback=[];
  for(let attempt=0;attempt<2;attempt++){
   let draft;
-  try{draft=draftSchema.parse(await generate(`【STEP 2: DRAFT】\n${policy}\n次の引用付きfactsだけを応募者の過去・現在の事実として使ってください。求人は応募先の要望としてのみ扱ってください。motivation、strengths、additional、summaryをそれぞれ文の配列で作成してください。各項目500字以内を目安とし、正確さを字数より優先してください。資料が少なければ短く書き、字数合わせで事実や性格を足さないでください。一人称の応募書類として自然な日本語にし、「応募者」という第三者表現は使わないでください。未経験という説明を全項目へ繰り返さないでください。各textは1文のみ、事実を含む文には必ず該当factIdsを付けてください。意欲だけの文はfactIdsを空配列にしてください。複数の主張を1文へ隠さないでください。過去の事実の文と今後の意欲の文を分けてください。経験不足は今後の学習・貢献意欲として正直につなぎ、経験済みと書かないでください。summaryは実際の経歴だけとし、求人条件や将来の希望を入れないでください。既存の志望動機・生成文は事実の証拠に使わないでください。\n${JSON.stringify({evidence,jobRequirements:job,corrections:feedback})}`,draftResponse));}catch(e){if(e instanceof z.ZodError)throw new GroundingError('INVALID_DRAFT','下書きの根拠を照合できませんでした。未確認の文章は表示しません。');throw e;}
+  try{draft=await checkedGenerate(generate,`【STEP 2: DRAFT】\n${policy}\n次の引用付きfactsだけを応募者の過去・現在の事実として使ってください。求人は応募先の要望としてのみ扱ってください。motivation、strengths、additional、summaryをそれぞれ文の配列で作成してください。各項目500字以内を目安とし、正確さを字数より優先してください。資料が少なければ短く書き、字数合わせで事実や性格を足さないでください。一人称の応募書類として自然な日本語にし、「応募者」という第三者表現は使わないでください。未経験という説明を全項目へ繰り返さないでください。各textは1文のみ、事実を含む文には必ず該当factIdsを付けてください。意欲だけの文はfactIdsを空配列にしてください。複数の主張を1文へ隠さないでください。過去の事実の文と今後の意欲の文を分けてください。経験不足は今後の学習・貢献意欲として正直につなぎ、経験済みと書かないでください。summaryは実際の経歴だけとし、求人条件や将来の希望を入れないでください。既存の志望動機・生成文は事実の証拠に使わないでください。\n${JSON.stringify({evidence,jobRequirements:job,corrections:feedback})}`,draftResponse,draftSchema);}catch(e){if(e instanceof z.ZodError)throw new GroundingError('INVALID_DRAFT','下書きの根拠を照合できませんでした。未確認の文章は表示しません。');throw e;}
   const sentences=fields.flatMap(field=>draft[field].map((s,index)=>({...s,id:`${field}:${index}`,field})));
   if(!sentences.length)throw new GroundingError('EMPTY_DRAFT','根拠のある下書きを作成できませんでした。');
   let verification;
-  try{verification=verificationSchema.parse(await generate(`【STEP 3: VERIFY】\n${policy}\nあなたは下書き作成者とは独立した厳格な事実確認担当です。下書きやfactsの主張を信用せず、必ず元の応募者資料全体と照合してください。全sentenceIdをちょうど一回ずつ判定してください。文の一部分でも資料に裏付けがなければunsupported、不明ならuncertainにしてください。明示的な否定、未経験、希望職種、求人条件からの転用、引用の文脈の変更、職種だけから推測した強み、職位・成果・年数・数値・顧客対応・専門領域の水増しを検出してください。担当業務から推測できそうな効果でも、原文に効果が明記されなければunsupportedです。「テスト・バグ修正」だけでは「品質向上に貢献した」と断定できません。「ツール開発」だけでは「効率化を実現した」と断定できません。「新しい分野への学習意欲が高い」も記載がなければ事実ではありません。事実を含む文はclassification=factualとして原文の連続した引用sourceQuotesを必ず付けてください。純粋な今後の意欲だけはaspirationalで構いません。意欲表現の中に過去の経験を紛れ込ませていればfactualです。sourceQuotesは応募者資料からのみ取り、求人票を経歴の証拠にしてはいけません。summaryの将来志向・求人要望の記述もunsupportedです。\n${JSON.stringify({applicantSources:sources,jobRequirements:job,evidence,sentences})}`,verificationResponse,{verify:true}));}catch(e){if(e instanceof z.ZodError)throw new GroundingError('INVALID_VERIFICATION','事実確認が完了しなかったため、下書きを表示していません。再試行してください。');throw e;}
+  try{verification=await checkedGenerate(generate,`【STEP 3: VERIFY】\n${policy}\nあなたは下書き作成者とは独立した厳格な事実確認担当です。下書きやfactsの主張を信用せず、必ず元の応募者資料全体と照合してください。全sentenceIdをちょうど一回ずつ判定してください。文の一部分でも資料に裏付けがなければunsupported、不明ならuncertainにしてください。明示的な否定、未経験、希望職種、求人条件からの転用、引用の文脈の変更、職種だけから推測した強み、職位・成果・年数・数値・顧客対応・専門領域の水増しを検出してください。担当業務から推測できそうな効果でも、原文に効果が明記されなければunsupportedです。「テスト・バグ修正」だけでは「品質向上に貢献した」と断定できません。「ツール開発」だけでは「効率化を実現した」と断定できません。「新しい分野への学習意欲が高い」も記載がなければ事実ではありません。事実を含む文はclassification=factualとして原文の連続した引用sourceQuotesを必ず付けてください。純粋な今後の意欲だけはaspirationalで構いません。意欲表現の中に過去の経験を紛れ込ませていればfactualです。sourceQuotesは応募者資料からのみ取り、求人票を経歴の証拠にしてはいけません。summaryの将来志向・求人要望の記述もunsupportedです。\n${JSON.stringify({applicantSources:sources,jobRequirements:job,evidence,sentences})}`,verificationResponse,verificationSchema,{verify:true});}catch(e){if(e instanceof z.ZodError)throw new GroundingError('INVALID_VERIFICATION','事実確認が完了しなかったため、下書きを表示していません。再試行してください。');throw e;}
   const checks=new Map();let invalidCoverage=false;
   for(const c of verification.checks){if(checks.has(c.sentenceId)||!sentences.some(s=>s.id===c.sentenceId))invalidCoverage=true;checks.set(c.sentenceId,c);}
   feedback=[];
