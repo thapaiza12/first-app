@@ -80,3 +80,18 @@ test('persistent malformed evidence returns a format error without draft or sour
  await assert.rejects(()=>groundedWrite(doc,{generate:async()=>{calls++;return {facts:'private response',matches:[],gaps:[]};}}),e=>e.code==='INVALID_EVIDENCE'&&!e.message.includes('private response')&&!e.data);
  assert.equal(calls,2);
 });
+test('verification cannot swap checks across batches even when total coverage looks complete',async()=>{
+ const swapped=[{checks:[verified.checks[2]]},{checks:verified.checks.slice(0,2)}];
+ await assert.rejects(()=>groundedWrite(doc,{verificationBatchSize:2,generate:sequence([plan,honest,...swapped,honest,...swapped])}),e=>e.code==='UNSUPPORTED_CLAIMS');
+});
+test('career writing generates only the requested self-PR rather than four duplicate sections',async()=>{
+ const requests=[];const draft={additional:[honest.motivation[0]]};
+ const result=await groundedWrite({...doc,type:'shokumukeirekisho'},{generate:sequence([plan,draft,{checks:[check('additional:0')]}],requests)});
+ assert.deepEqual(Object.keys(result.data),['additional']);assert.equal(requests.length,3);
+ assert.deepEqual(Object.keys(requests[1].schema.properties),['additional']);
+ assert.match(requests[1].prompt,/additionalだけ/);
+});
+test('uploading the identical original as resume and career does not double request size',()=>{
+ const result=writingSources({sourceText:resume,careerText:resume,jobText:job});
+ assert.equal(result.sources.length,1);assert.equal(result.sources[0].text,resume);
+});

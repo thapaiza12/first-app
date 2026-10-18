@@ -3,7 +3,7 @@ import {geminiAssist} from './gemini-assist.js';
 import {ollamaAssist,ollamaStatus} from './ollama-assist.js';
 import {assist} from './local-assist.js';
 const recoverable=new Set(['QUOTA_EXCEEDED','CONNECTION_FAILED','PROVIDER_ERROR','MODEL_UNAVAILABLE']);
-export async function aiAssist(input,{mode='auto',ollamaModel='gemma3:4b',apiKey,geminiModel,ollamaBaseUrl,gemini=geminiAssist,ollama=ollamaAssist,local=assist,signal,groqKey,groqModel='llama-3.3-70b-versatile',groq=groqAssist}={}){
+export async function aiAssist(input,{mode='auto',ollamaModel='gemma3:4b',apiKey,geminiModel,ollamaBaseUrl,gemini=geminiAssist,ollama=ollamaAssist,local=assist,signal,groqKey,groqModel='openai/gpt-oss-120b',groq=groqAssist}={}){
  if(mode==='groq')return groq(input,{apiKey:groqKey,model:groqModel,signal});
  if(mode==='gemini-groq'){
   const runGemini=()=>{if(!apiKey)throw Object.assign(Error('画像の読取にはGeminiキーを設定してください。'),{code:'MISSING_API_KEY'});return gemini(input,{apiKey,model:geminiModel||'gemini-2.5-flash',signal});};

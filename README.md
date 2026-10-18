@@ -97,9 +97,9 @@ Live Gemini validation on 2026-10-16 reproduced HTTP 400 from the language-level
 
 The product/browser-tab title is M&A CV creation. Form controls use black text at 16px or larger, with larger labels and responsive layouts. The loopback address remains a working local URL; a phrase containing spaces and an ampersand cannot replace a browser hostname. No hosts-file edits, root privileges, or custom DNS are requested.
 
-## Gemini + Groq (0.7.3)
+## Gemini + Groq (0.7.5)
 
-Select **自動：Gemini → Groq** in AI settings and save. The selected Groq model defaults to `llama-3.3-70b-versatile` and can be changed without replacing the app. This mode does not call Ollama. Gemini + Groq is the default. Saved legacy auto/Ollama selections migrate to this mode; Ollama settings and model downloads have been removed from the interface.
+Select **自動：Gemini → Groq** in AI settings and save. The selected Groq model defaults to `openai/gpt-oss-120b` and can be changed without replacing the app. This mode does not call Ollama. Gemini + Groq is the default. Saved legacy auto/Ollama selections migrate to this mode; Ollama settings and model downloads have been removed from the interface.
 
 Gemini is tried first for extraction, drafting and verification. If it cannot complete due to provider, output-limit or generated evidence/verification failures, text-capable tasks restart from original sources on Groq. Groq must independently pass the complete citation-based workflow; rejected Gemini drafts are never reused. Missing applicant/job evidence and cancellation do not trigger fallback. The Groq model is text-only: native-text PDFs may use Groq when Gemini is unavailable, but scanned PDFs/photos stop with an explanation rather than silently losing their image content.
 
@@ -108,3 +108,11 @@ On Mac create a Groq account/API key at https://console.groq.com/keys. Open **Gr
 Groq JSON mode is used rather than assuming this model supports strict JSON-schema output. Responses still pass local schema and source verification before review. Truncated responses, invalid credentials, quota failures and cancellation are handled explicitly. HTTP 429 uses a numeric Retry-After when provided; there are no unbounded automatic retries or hard-coded free-plan allowances. Safe numeric usage/rate-limit headers are returned in providerUsage, without assuming their period. Neither free-tier availability nor current public quota numbers have been verified here. Both Google and Groq receive applicant material in this cloud mode; local-only modes remain available.
 
 Transport, routing, factual checks, browser UI and mocked native Keychain tests pass. Live Groq authentication, current model availability, quotas and Japanese applicant-document quality still need testing with a privately configured key. Public Groq documentation was blocked by this environment's network policy; no latest-limit figures are asserted.
+
+### Groq request sizing (0.7.5)
+
+Groq requests remove duplicated policy text while retaining the system policy. A bundled local o200k tokenizer estimates message size; this matches the GPT-OSS tokenizer family and is only an estimate for other models. Output allowance adapts to a conservative 8,000-token application budget with framing headroom (not a claim about any account quota). GPT-OSS uses low reasoning effort. A too-large request is rejected explicitly without truncating source text. HTTP 413 has a dedicated, safe size explanation.
+
+Career self-PR generation requests only `additional`; résumé generation requests `motivation` and `strengths`. Legacy callers without a document type keep all four sections. Groq verifies two sentences per call, retaining complete applicant sources and job information in each check. The redundant evidence object is omitted from verification; actual originals and draft sentences remain. Checks must match their own batch exactly, and all batches must pass before returning any draft. Extra calls can still hit account rate limits; no quota or live service availability is guaranteed.
+
+Two privately uploaded four-page PDFs were measured locally, outside version control. Their previous first request used approximately 6,602 input tokens plus 4,096 reserved output tokens. The updated request sizes were tested against an 8,000-token simulated transport. These are request-sizing and regression checks, not live Groq account verification. Applicant files, text and measurements containing source content are never bundled.

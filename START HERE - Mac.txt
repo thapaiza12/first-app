@@ -60,13 +60,13 @@ skills. The browser tab is named M&A CV creation; its address remains local.
 Install by stopping the old background app, then replacing the application in
 Applications. Documents and the Keychain key are kept outside the app bundle.
 
-GEMINI + GROQ — VERSION 0.7.3
+GEMINI + GROQ — VERSION 0.7.5
 1. Create your Groq API key at https://console.groq.com/keys.
 2. Open this updated CV app, then open AI settings.
 3. Click Groqキーを設定. Paste the key ONLY into the hidden Mac dialog.
    Choose Save key. Mac Keychain keeps it separately from your Gemini key.
 4. After the app reopens, select 自動：Gemini → Groq.
-   Keep Groqモデル as llama-3.3-70b-versatile, then click AI設定を保存.
+   Keep Groqモデル as openai/gpt-oss-120b, then click AI設定を保存.
 5. Click Groq接続を確認 to check the actual key/model connection.
 
 Gemini is used first for reading, writing and verification. If it cannot
@@ -81,5 +81,11 @@ quality were not verified in the development environment.
 
 Never paste keys in chat, the model-name field, or a document.
 
-Version 0.7.3 uses Gemini + Groq by default. Legacy Ollama selections are
+Version 0.7.5 uses Gemini + Groq by default. Legacy Ollama selections are
 automatically migrated. No Gemma model or Ollama installation is needed.
+
+VERSION 0.7.5: Groq output space now adapts to request size. Career self-PR
+creates only the requested section. Verification runs in smaller batches
+with complete source text. No applicant documents are included in this ZIP.
+Existing keys and saved documents are retained. The first launch may refresh
+Node dependencies automatically; Node/Python do not need reinstalling.

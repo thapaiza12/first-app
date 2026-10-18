@@ -46,8 +46,8 @@ test('a slow import shows elapsed time and can be cancelled without applying lat
 });
 test('Groq configuration uses native key settings and tests Groq separately from Gemini',async({page})=>{
  let selected=false,keyOpened=false;
- await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true,groqConfigured:false,desktopMode:true,aiSettings:{mode:selected?'gemini-groq':'auto',ollamaModel:'gemma3:4b',groqModel:'llama-3.3-70b-versatile'},loginRequired:false}}));
- await page.route('**/api/ai/settings',r=>{const data=r.request().postDataJSON();expect(data.mode).toBe('gemini-groq');expect(data.groqModel).toBe('llama-3.3-70b-versatile');expect(data).not.toHaveProperty('apiKey');selected=true;return r.fulfill({json:data});});
+ await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true,groqConfigured:false,desktopMode:true,aiSettings:{mode:selected?'gemini-groq':'auto',ollamaModel:'gemma3:4b',groqModel:'openai/gpt-oss-120b'},loginRequired:false}}));
+ await page.route('**/api/ai/settings',r=>{const data=r.request().postDataJSON();expect(data.mode).toBe('gemini-groq');expect(data.groqModel).toBe('openai/gpt-oss-120b');expect(data).not.toHaveProperty('apiKey');selected=true;return r.fulfill({json:data});});
  await page.route('**/api/ai/check',r=>{expect(r.request().postDataJSON()).toEqual({provider:'groq'});return r.fulfill({json:{mode:'groq'}});});
  await page.route('**/api/desktop/groq-settings',r=>{keyOpened=true;return r.fulfill({json:{ok:true}});});
  await page.goto('/');await page.locator('.save-status button').click();await page.getByLabel('AIの選択').selectOption('gemini-groq');await page.getByRole('button',{name:'AI設定を保存'}).click();await page.getByRole('button',{name:'Groq接続を確認',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('Groqへの接続に成功しました');await page.getByRole('button',{name:'Groqキーを設定',exact:true}).click();expect(keyOpened).toBe(true);await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.local-notice')).toContainText('Groq');

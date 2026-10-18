@@ -1,8 +1,8 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';import {groqAssist} from '../server/groq-assist.js';import {aiAssist} from '../server/ai-assist.js';
+import {test} from 'node:test';import assert from 'node:assert/strict';import {groqAssist,groqRequestSize} from '../server/groq-assist.js';import {aiAssist} from '../server/ai-assist.js';
 const ok=(data,usage={prompt_tokens:20,completion_tokens:10})=>new Response(JSON.stringify({choices:[{finish_reason:'stop',message:{content:JSON.stringify(data)}}],usage}),{headers:{'x-ratelimit-remaining-requests':'23','x-ratelimit-remaining-tokens':'4567'}});
 test('Groq sends its own key in a header, uses JSON mode, and accepts only text-ready PDFs',async()=>{
  let sent;const result=await groqAssist({task:'extract',text:'氏名：テスト',textReady:true,pages:['data:image/png;base64,YWJj']},{apiKey:'test-placeholder',fetchImpl:async(url,options)=>{sent={url,options,body:JSON.parse(options.body)};return ok({name:'テスト'});}});
- assert.equal(result.mode,'groq');assert.equal(sent.url,'https://api.groq.com/openai/v1/chat/completions');assert.equal(sent.options.headers.Authorization,'Bearer test-placeholder');assert.ok(!sent.url.includes('test-placeholder'));assert.equal(sent.body.model,'llama-3.3-70b-versatile');assert.equal(sent.body.response_format.type,'json_object');assert.ok(!JSON.stringify(sent.body).includes('YWJj'));assert.match(sent.body.messages[0].content,/"type":"object"/);assert.equal(result.providerUsage.rateLimits.requestsRemaining,23);
+ assert.equal(result.mode,'groq');assert.equal(sent.url,'https://api.groq.com/openai/v1/chat/completions');assert.equal(sent.options.headers.Authorization,'Bearer test-placeholder');assert.ok(!sent.url.includes('test-placeholder'));assert.equal(sent.body.model,'openai/gpt-oss-120b');assert.equal(sent.body.response_format.type,'json_object');assert.ok(!JSON.stringify(sent.body).includes('YWJj'));assert.match(sent.body.messages[0].content,/"type":"object"/);assert.equal(result.providerUsage.rateLimits.requestsRemaining,23);
  let called=false;await assert.rejects(()=>groqAssist({task:'extract',pages:['data:image/png;base64,YWJj']},{apiKey:'test-placeholder',fetchImpl:async()=>{called=true;}}),e=>e.code==='GROQ_TEXT_ONLY');assert.equal(called,false);
 });
 test('Groq drafts and verifies using the shared three-stage grounded workflow',async()=>{
@@ -34,8 +34,23 @@ test('Gemini output exhaustion can restart complete native text extraction on Gr
 
 test('writing falls back Gemini then Groq, with full verification and cancellation respected',async()=>{
  const order=[];const input={task:'write',document:{sourceText:'actual resume'}};
- const options={mode:'gemini-groq',apiKey:'placeholder',groqKey:'placeholder',groqModel:'llama-3.3-70b-versatile',gemini:async()=>{order.push('gemini');throw Object.assign(Error('invalid evidence response'),{code:'INVALID_EVIDENCE'});},groq:async(received,config)=>{order.push('groq');assert.equal(received,input);assert.equal(config.model,'llama-3.3-70b-versatile');return {mode:'groq',warnings:[],grounding:{verified:true}};}};
+ const options={mode:'gemini-groq',apiKey:'placeholder',groqKey:'placeholder',groqModel:'openai/gpt-oss-120b',gemini:async()=>{order.push('gemini');throw Object.assign(Error('invalid evidence response'),{code:'INVALID_EVIDENCE'});},groq:async(received,config)=>{order.push('groq');assert.equal(received,input);assert.equal(config.model,'openai/gpt-oss-120b');return {mode:'groq',warnings:[],grounding:{verified:true}};}};
  assert.equal((await aiAssist(input,options)).grounding.verified,true);assert.deepEqual(order,['gemini','groq']);
  await assert.rejects(()=>aiAssist(input,{...options,groq:async()=>{throw Object.assign(Error('unsupported'),{code:'UNSUPPORTED_CLAIMS'});}}),e=>e.code==='UNSUPPORTED_CLAIMS');
  let fallback=false;await assert.rejects(()=>aiAssist(input,{...options,gemini:async()=>{throw Object.assign(Error('cancelled'),{code:'AI_CANCELLED'});},groq:async()=>{fallback=true;}}));assert.equal(fallback,false);
+});
+test('Groq budgets output against complete Japanese input and retains original sources in every verification batch',async()=>{
+ const source='【原文】'+('海外への物流調整を担当。\n'.repeat(150))+'【末尾】';
+ const quote='海外への物流調整を担当。';const sentence={text:'海外への物流調整を担当しました。',factIds:['F1']};const fields=['motivation','strengths','additional','summary'];
+ const responses=[{facts:[{id:'F1',claim:quote,sourceId:'career',quote}],matches:[],gaps:[]},Object.fromEntries(fields.map(k=>[k,[sentence]])),...[[0,1],[2,3]].map(ids=>({checks:ids.map(i=>({sentenceId:fields[i]+':0',verdict:'supported',classification:'factual',sourceQuotes:[{sourceId:'career',quote}],reason:'原文と一致'}))}))];
+ const calls=[];const result=await groqAssist({task:'write',document:{careerText:source,jobText:'海外物流の担当者募集'}},{apiKey:'test-placeholder',model:'openai/gpt-oss-120b',fetchImpl:async(url,options)=>{
+  const body=JSON.parse(options.body);calls.push(body);assert.equal(body.reasoning_effort,'low');assert.ok(body.max_completion_tokens<=2048);assert.ok(groqRequestSize(body.messages).inputTokens+body.max_completion_tokens<=7872);
+  if(calls.length!==2){assert.ok(body.messages[1].content.includes('【原文】'));assert.ok(body.messages[1].content.includes('【末尾】'));}
+  return ok(responses.shift());
+ }});
+ assert.equal(result.grounding.verified,true);assert.equal(calls.length,4);
+ for(const call of calls.slice(2)){assert.ok(!call.messages[1].content.includes('"evidence":'));}
+});
+test('413 is classified as request size without exposing provider contents',async()=>{
+ await assert.rejects(()=>groqAssist({task:'transcribe',text:'fixture'},{apiKey:'test-placeholder',fetchImpl:async()=>new Response('private provider text',{status:413})}),e=>e.code==='GROQ_REQUEST_TOO_LARGE'&&!e.message.includes('private provider text'));
 });
