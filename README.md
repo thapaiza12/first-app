@@ -97,11 +97,11 @@ Live Gemini validation on 2026-10-16 reproduced HTTP 400 from the language-level
 
 The product/browser-tab title is M&A CV creation. Form controls use black text at 16px or larger, with larger labels and responsive layouts. The loopback address remains a working local URL; a phrase containing spaces and an ampersand cannot replace a browser hostname. No hosts-file edits, root privileges, or custom DNS are requested.
 
-## Gemini + Groq (0.7.1)
+## Gemini + Groq (0.7.3)
 
-Select **Geminiで読取 ＋ Groqで文章作成** in AI settings and save. The selected Groq model defaults to `llama-3.3-70b-versatile` and can be changed without replacing the app. This mode does not call Ollama. Gemini + Groq is the default. Saved legacy auto/Ollama selections migrate to this mode; Ollama settings and model downloads have been removed from the interface.
+Select **自動：Gemini → Groq** in AI settings and save. The selected Groq model defaults to `llama-3.3-70b-versatile` and can be changed without replacing the app. This mode does not call Ollama. Gemini + Groq is the default. Saved legacy auto/Ollama selections migrate to this mode; Ollama settings and model downloads have been removed from the interface.
 
-Gemini handles document/image extraction. Groq handles drafting and verification through the identical citation-based workflow. On eligible quota/network/provider failures, text-capable tasks can restart on the other cloud provider. Validation failures never bypass the checks. The Groq model is text-only: native-text PDFs may use Groq when Gemini is unavailable, but scanned PDFs/photos stop with an explanation rather than silently losing their image content.
+Gemini is tried first for extraction, drafting and verification. If it cannot complete due to provider, output-limit or generated evidence/verification failures, text-capable tasks restart from original sources on Groq. Groq must independently pass the complete citation-based workflow; rejected Gemini drafts are never reused. Missing applicant/job evidence and cancellation do not trigger fallback. The Groq model is text-only: native-text PDFs may use Groq when Gemini is unavailable, but scanned PDFs/photos stop with an explanation rather than silently losing their image content.
 
 On Mac create a Groq account/API key at https://console.groq.com/keys. Open **Groqキーを設定** in app settings and enter the key only in the native hidden dialog. It is stored under **M&A Group Groq** in Mac Keychain, separate from the Gemini entry; the app restarts its backend to load the key. **Groq接続を確認** makes a small synthetic text request to Groq independently of Gemini. No key is posted through browser settings, stored in SQLite, or included in the app ZIP. Server deployments can inject optional `GROQ_API_KEY` and `GROQ_MODEL`; the endpoint is HTTPS `api.groq.com/openai/v1/chat/completions`, with the key only in the Authorization header.
 

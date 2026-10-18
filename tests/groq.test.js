@@ -14,15 +14,15 @@ test('Groq quota, credentials, truncation and cancellation fail safely without l
  await assert.rejects(()=>groqAssist({task:'transcribe',text:'fixture'},{apiKey:'test-placeholder',fetchImpl:async()=>new Response(JSON.stringify({choices:[{finish_reason:'length',message:{content:'{"text":"partial"}'}}]}))}),e=>e.code==='GROQ_INCOMPLETE');
  const controller=new AbortController();await assert.rejects(()=>groqAssist({task:'transcribe',text:'fixture'},{apiKey:'test-placeholder',signal:controller.signal,fetchImpl:async(url,options)=>new Promise((resolve,reject)=>{options.signal.addEventListener('abort',()=>reject(Error('cancelled')),{once:true});controller.abort();})}),e=>e.code==='AI_CANCELLED');
 });
-test('combined mode uses Groq for writing, Gemini for images, and never local Ollama',async()=>{
+test('combined mode prefers Gemini for writing and images and never local Ollama',async()=>{
  let g=0,q=0,o=0;const options={mode:'gemini-groq',apiKey:'gemini-placeholder',groqKey:'groq-placeholder',gemini:async()=>{g++;return {mode:'gemini',warnings:[]};},groq:async()=>{q++;return {mode:'groq',warnings:[]};},ollama:async()=>{o++;throw Error('must not call');}};
- assert.equal((await aiAssist({task:'write'},options)).mode,'groq');assert.equal((await aiAssist({task:'extract',pages:['image']},options)).mode,'gemini');assert.equal(g,1);assert.equal(q,1);assert.equal(o,0);
+ assert.equal((await aiAssist({task:'write'},options)).mode,'gemini');assert.equal((await aiAssist({task:'extract',pages:['image']},options)).mode,'gemini');assert.equal(g,2);assert.equal(q,0);assert.equal(o,0);
 });
 test('quota fallback restarts text work; scanned images and factual failures cannot bypass guards',async()=>{
  let q=0,g=0;const options={mode:'gemini-groq',apiKey:'placeholder',groqKey:'placeholder',gemini:async()=>{g++;throw Object.assign(Error('Gemini quota'),{code:'QUOTA_EXCEEDED'});},groq:async()=>{q++;return {mode:'groq',warnings:[]};}};
  assert.equal((await aiAssist({task:'extract',textReady:true,pages:['image']},options)).mode,'groq');
  await assert.rejects(()=>aiAssist({task:'extract',pages:['image']},options),e=>e.code==='VISION_UNAVAILABLE');assert.equal(q,1);
- await assert.rejects(()=>aiAssist({task:'write'},{...options,groq:async()=>{throw Object.assign(Error('unsupported facts'),{code:'UNSUPPORTED_CLAIMS'});}}),e=>e.code==='UNSUPPORTED_CLAIMS');assert.equal(g,2);
+ await assert.rejects(()=>aiAssist({task:'write'},{...options,groq:async()=>{throw Object.assign(Error('unsupported facts'),{code:'UNSUPPORTED_CLAIMS'});}}),e=>e.code==='UNSUPPORTED_CLAIMS');assert.equal(g,3);
  const result=await aiAssist({task:'write'},{...options,groq:async()=>{throw Object.assign(Error('Groq quota'),{code:'GROQ_QUOTA_EXCEEDED'});},gemini:async()=>({mode:'gemini',warnings:[]})});assert.equal(result.mode,'gemini');
 });
 
@@ -30,4 +30,12 @@ test('Gemini output exhaustion can restart complete native text extraction on Gr
  let calls=0;
  const result=await aiAssist({task:'extract',text:'complete source',textReady:true,pages:['data:image/png;base64,YWJj']},{mode:'gemini-groq',apiKey:'placeholder',groqKey:'placeholder',gemini:async()=>{throw Object.assign(Error('output limit'),{code:'OUTPUT_LIMIT'});},groq:async(input)=>{calls++;assert.equal(input.text,'complete source');return {mode:'groq',data:{name:'確認'},warnings:[]};}});
  assert.equal(result.mode,'groq');assert.equal(calls,1);
+});
+
+test('writing falls back Gemini then Groq, with full verification and cancellation respected',async()=>{
+ const order=[];const input={task:'write',document:{sourceText:'actual resume'}};
+ const options={mode:'gemini-groq',apiKey:'placeholder',groqKey:'placeholder',groqModel:'llama-3.3-70b-versatile',gemini:async()=>{order.push('gemini');throw Object.assign(Error('invalid evidence response'),{code:'INVALID_EVIDENCE'});},groq:async(received,config)=>{order.push('groq');assert.equal(received,input);assert.equal(config.model,'llama-3.3-70b-versatile');return {mode:'groq',warnings:[],grounding:{verified:true}};}};
+ assert.equal((await aiAssist(input,options)).grounding.verified,true);assert.deepEqual(order,['gemini','groq']);
+ await assert.rejects(()=>aiAssist(input,{...options,groq:async()=>{throw Object.assign(Error('unsupported'),{code:'UNSUPPORTED_CLAIMS'});}}),e=>e.code==='UNSUPPORTED_CLAIMS');
+ let fallback=false;await assert.rejects(()=>aiAssist(input,{...options,gemini:async()=>{throw Object.assign(Error('cancelled'),{code:'AI_CANCELLED'});},groq:async()=>{fallback=true;}}));assert.equal(fallback,false);
 });
