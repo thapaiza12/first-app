@@ -25,3 +25,9 @@ test('quota fallback restarts text work; scanned images and factual failures can
  await assert.rejects(()=>aiAssist({task:'write'},{...options,groq:async()=>{throw Object.assign(Error('unsupported facts'),{code:'UNSUPPORTED_CLAIMS'});}}),e=>e.code==='UNSUPPORTED_CLAIMS');assert.equal(g,2);
  const result=await aiAssist({task:'write'},{...options,groq:async()=>{throw Object.assign(Error('Groq quota'),{code:'GROQ_QUOTA_EXCEEDED'});},gemini:async()=>({mode:'gemini',warnings:[]})});assert.equal(result.mode,'gemini');
 });
+
+test('Gemini output exhaustion can restart complete native text extraction on Groq',async()=>{
+ let calls=0;
+ const result=await aiAssist({task:'extract',text:'complete source',textReady:true,pages:['data:image/png;base64,YWJj']},{mode:'gemini-groq',apiKey:'placeholder',groqKey:'placeholder',gemini:async()=>{throw Object.assign(Error('output limit'),{code:'OUTPUT_LIMIT'});},groq:async(input)=>{calls++;assert.equal(input.text,'complete source');return {mode:'groq',data:{name:'確認'},warnings:[]};}});
+ assert.equal(result.mode,'groq');assert.equal(calls,1);
+});

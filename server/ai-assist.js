@@ -18,7 +18,7 @@ export async function aiAssist(input,{mode='auto',ollamaModel='gemma3:4b',apiKey
   }
   if(!apiKey&&textCapable)return runGroq();
   try{return await runGemini();}catch(e){
-   if(!recoverable.has(e.code)||!groqKey)throw e;
+   if((!recoverable.has(e.code)&&e.code!=='OUTPUT_LIMIT')||!groqKey)throw e;
    if(!textCapable)throw Object.assign(Error(e.message+'\nこの資料は画像の読取が必要です。選択したGroqモデルは画像を読めないため、切り替えて部分的に反映することはしません。'),{code:'VISION_UNAVAILABLE'});
    try{const result=await runGroq();return {...result,warnings:[e.message+' PDFの埋め込みテキストからGroqで読み取りました。',...result.warnings]};}catch(other){throw Object.assign(Error(e.message+'\nGroqも完了しませんでした：'+other.message),{code:other.code||'AI_FAILED'});}
   }

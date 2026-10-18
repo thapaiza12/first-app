@@ -16,7 +16,7 @@ test('400 schema rejection retries compatible JSON mode once without losing any 
   if(requests.length===1)return new Response(JSON.stringify({error:{status:'INVALID_ARGUMENT',message:'The response schema has too many states'}}),{status:400});
   return ok({name:'テスト 太郎',address:'東京都千代田区1-1',phone:'090-1234-5678',education:[{date:'2015-04',name:'大学 入学'}],experience:[{date:'2019-04',end:'2024-03',name:'会社A'}],licenses:[{date:'2018-06',name:'資格A'}]});
  }});
- assert.equal(requests.length,2);assert.equal(requests[1].generationConfig.responseSchema,undefined);assert.equal(requests[1].generationConfig.thinkingConfig,undefined);assert.equal(requests[1].contents[0].parts[1].inlineData.data,'YWJj');assert.match(requests[1].contents[0].parts[0].text,/education/);assert.equal(result.mode,'gemini');assert.equal(result.data.phone,'090-1234-5678');assert.equal(result.data.experience.length,1);assert.equal(result.data.licenses.length,1);
+ assert.equal(requests.length,2);assert.equal(requests[1].generationConfig.responseSchema,undefined);assert.equal(requests[1].generationConfig.thinkingConfig.thinkingBudget,0);assert.equal(requests[1].contents[0].parts[1].inlineData.data,'YWJj');assert.match(requests[1].contents[0].parts[0].text,/education/);assert.equal(result.mode,'gemini');assert.equal(result.data.phone,'090-1234-5678');assert.equal(result.data.experience.length,1);assert.equal(result.data.licenses.length,1);
 });
 test('400 invalid or blocked keys are actionable, never retried, and never expose raw provider data',async()=>{
  for(const [error,code] of [[{message:'API key not valid. sensitive-value',details:[{reason:'API_KEY_INVALID'}]},'INVALID_API_KEY'],[{message:'Your API key was reported as leaked. sensitive-value'},'KEY_BLOCKED']]){
@@ -25,4 +25,13 @@ test('400 invalid or blocked keys are actionable, never retried, and never expos
 });
 test('a second 400 stops the import rather than returning a local success',async()=>{
  let calls=0;await assert.rejects(()=>geminiAssist({task:'extract',text:'fixture'},{apiKey:'test-placeholder',fetchImpl:async()=>{calls++;return new Response(JSON.stringify({error:{status:'INVALID_ARGUMENT',message:'invalid configuration private value'}}),{status:400});}}),e=>e.code==='REQUEST_REJECTED'&&!e.message.includes('private value'));assert.equal(calls,2);
+});
+test('truncated extraction retries completely with more output and preserves thinking controls in compatibility mode',async()=>{
+ const calls=[];const result=await geminiAssist({task:'extract',text:'氏名：確認 太郎',textReady:true,pages:['data:image/png;base64,YWJj']},{apiKey:'test-placeholder',fetchImpl:async(url,options)=>{
+  const request=JSON.parse(options.body);calls.push(request);
+  if(calls.length===1)return new Response(JSON.stringify({error:{message:'unsupported schema'}}),{status:400});
+  if(calls.length===2)return new Response(JSON.stringify({candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:'{"name":"不完全'}]}}]}));
+  return ok({name:'確認 太郎',phone:'090-1234-5678'});
+ }});
+ assert.equal(calls.length,3);assert.equal(calls[1].generationConfig.thinkingConfig.thinkingBudget,0);assert.equal(calls[2].generationConfig.maxOutputTokens,32768);assert.equal(calls[2].contents[0].parts.length,1);assert.equal(result.data.name,'確認 太郎');assert.equal(result.data.phone,'090-1234-5678');
 });
