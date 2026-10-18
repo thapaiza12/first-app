@@ -97,7 +97,7 @@ Live Gemini validation on 2026-10-16 reproduced HTTP 400 from the language-level
 
 The product/browser-tab title is M&A CV creation. Form controls use black text at 16px or larger, with larger labels and responsive layouts. The loopback address remains a working local URL; a phrase containing spaces and an ampersand cannot replace a browser hostname. No hosts-file edits, root privileges, or custom DNS are requested.
 
-## Gemini + Groq (0.7.6)
+## Gemini + Groq (0.7.7)
 
 Select **自動：Gemini → Groq** in AI settings and save. The selected Groq model defaults to `openai/gpt-oss-120b` and can be changed without replacing the app. This mode does not call Ollama. Gemini + Groq is the default. Saved legacy auto/Ollama selections migrate to this mode; Ollama settings and model downloads have been removed from the interface.
 
@@ -124,3 +124,5 @@ Complete native text from PDF, DOCX, XLSX/XLSM, PPTX (including tables/groups), 
 JPEG/PNG and multi-page TIFF retain all processed page images and OCR provenance. OCR-ready is true only after all pages return text. macOS uses a local Vision request through bundled JXA, requiring no Tesseract install; other systems and Mac fallback can use Tesseract. Native Vision invocation and temporary-file cleanup have mocked tests; actual macOS execution was not available in the Linux workspace. OCR can misread characters, so original review remains required. Complete OCR text may feed Groq after Gemini quota failure, with an explicit OCR warning; incomplete OCR never enables that fallback. Native and OCR shortcuts apply to copying job text, not factual generation: writing still uses Gemini first, then Groq.
 
 A Groq `length` finish reason is classified separately. Cut-off structured extraction restarts disjoint field groups recursively against the complete original, merges only complete responses and applies nothing if any required group fails. Writing retries one compact response against the original sources if its output is cut off. Requests retain the overall token budget, but can allocate up to 4,096 output tokens when input leaves room. Provider quota errors remain distinct and cannot be eliminated by client code.
+
+The detailed pre-download code/artifact review, corrected defects and outstanding live checks are recorded in [docs/VERIFICATION.md](docs/VERIFICATION.md). Version 0.7.7 adds a visible backend version and rejects false completeness on unsupported image data or uncached formula results.

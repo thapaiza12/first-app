@@ -1,5 +1,5 @@
 """Local parsing and Japanese document export. Input documents are data, never instructions."""
-import sys,json,os,io,base64,zipfile,subprocess,shutil,tempfile
+import sys,json,os,io,base64,zipfile,subprocess,shutil,tempfile,re
 from xml.etree import ElementTree as ET
 from pathlib import Path
 import fitz
@@ -10,12 +10,14 @@ def ocr_image(raw):
     image.thumbnail((2800,3600))
     buffer=io.BytesIO(); image.save(buffer,format='PNG')
     if sys.platform=='darwin':
-        with tempfile.TemporaryDirectory(prefix='ma-ocr-') as folder:
-            source=Path(folder)/'input.png';source.write_bytes(buffer.getvalue())
-            result=subprocess.run(['/usr/bin/osascript','-l','JavaScript',str(Path(__file__).with_name('mac_ocr.js')),str(source)],capture_output=True,timeout=25)
-            if result.returncode==0:
-                try:return json.loads(result.stdout.decode())['text'].strip()
-                except (ValueError,KeyError):pass
+        try:
+            with tempfile.TemporaryDirectory(prefix='ma-ocr-') as folder:
+                source=Path(folder)/'input.png';source.write_bytes(buffer.getvalue())
+                result=subprocess.run(['/usr/bin/osascript','-l','JavaScript',str(Path(__file__).with_name('mac_ocr.js')),str(source)],capture_output=True,timeout=25)
+                if result.returncode==0:
+                    value=json.loads(result.stdout.decode()).get('text')
+                    if isinstance(value,str) and value.strip():return value.strip()
+        except (ValueError,KeyError,OSError,subprocess.TimeoutExpired):pass
         if not shutil.which('tesseract'):raise ValueError('Macの画像読取を完了できませんでした。画像を再度選択するかGeminiで確認してください。')
     if not shutil.which('tesseract'):raise ValueError('画像のローカルOCRを利用できません。Geminiによる画像読取が必要です。')
     result=subprocess.run(['tesseract','stdin','stdout','--tessdata-dir',str(Path(__file__).parent/'ocr'),'-l','jpn+eng','--psm','3'],input=buffer.getvalue(),capture_output=True,timeout=12,env={**os.environ,'OMP_THREAD_LIMIT':'2'})
@@ -23,21 +25,26 @@ def ocr_image(raw):
     return result.stdout.decode('utf-8').strip()
 
 def extract(path, original):
-    ext=Path(original).suffix.lower(); text=''; photos=[]; pages=[]; warnings=[]; text_ready=False; ocr_ready=False; page_count=0
+    ext=Path(original).suffix.lower(); text=''; photos=[]; pages=[]; warnings=[]; text_ready=False; ocr_ready=False; page_count=0; missing_parts=False; unreadable_media=False
     if ext in ['.docx','.xlsx','.xlsm','.pptx']:
         with zipfile.ZipFile(path) as z:
             if len(z.infolist())>10000 or sum(i.file_size for i in z.infolist())>200*1024*1024:
                 raise ValueError('展開後の書類サイズが大きすぎます。資料を分割してください。')
     def save_photo(raw):
+        nonlocal missing_parts,unreadable_media
+        office=ext in ['.docx','.xlsx','.xlsm','.pptx']
         try:
-            im=Image.open(io.BytesIO(raw)); w,h=im.size
-            if w<80 or h<80: return
-            im=ImageOps.exif_transpose(im).convert('RGB'); im.thumbnail((900,1200))
-            b=io.BytesIO(); im.save(b,format='JPEG',quality=90)
-            data='data:image/jpeg;base64,'+base64.b64encode(b.getvalue()).decode()
-            photos.append({'data':data,'width':w,'height':h})
-            if ext in ['.docx','.xlsx','.xlsm','.pptx']:pages.append(data)
-        except Exception: pass
+            with Image.open(io.BytesIO(raw)) as opened:
+                im=ImageOps.exif_transpose(opened).convert('RGB');w,h=im.size
+            if office:
+                readable=im.copy();readable.thumbnail((2400,3200))
+                b=io.BytesIO();readable.save(b,format='JPEG',quality=92)
+                pages.append('data:image/jpeg;base64,'+base64.b64encode(b.getvalue()).decode())
+            if w<80 or h<80:return
+            im.thumbnail((900,1200));b=io.BytesIO();im.save(b,format='JPEG',quality=90)
+            photos.append({'data':'data:image/jpeg;base64,'+base64.b64encode(b.getvalue()).decode(),'width':w,'height':h})
+        except Exception:
+            if office:missing_parts=True;unreadable_media=True
     if ext=='.pdf':
         doc=fitz.open(path)
         if doc.is_encrypted: raise ValueError('パスワード付きPDFは解除してからアップロードしてください。')
@@ -96,15 +103,23 @@ def extract(path, original):
     elif ext in ['.xlsx','.xlsm']:
         import openpyxl
         w=openpyxl.load_workbook(io.BytesIO(Path(path).read_bytes()),read_only=False,data_only=True)
+        formulas=openpyxl.load_workbook(io.BytesIO(Path(path).read_bytes()),read_only=True,data_only=False)
         count=0
         for sheet in w:
             text+='\n'+sheet.title+'\n'
-            for row in sheet.iter_rows():
+            for row,formula_row in zip(sheet.iter_rows(),formulas[sheet.title].iter_rows()):
                 count+=1
                 if count>15000: raise ValueError('Excelは15,000行以内に分割してください。')
-                text+=' | '.join(str(c.value) for c in row if c.value is not None)+'\n'
+                values=[]
+                for cell,formula in zip(row,formula_row):
+                    if formula.data_type=='f' and cell.value is None:
+                        missing_parts=True
+                        values.append('[計算結果未保存:'+str(formula.value)+']')
+                    elif cell.value is not None:values.append(str(cell.value))
+                text+=' | '.join(values)+'\n'
             for im in sheet._images: save_photo(im._data())
-        w.close()
+        w.close();formulas.close()
+        if missing_parts:warnings.append('Excelの数式に保存済みの計算結果がないセルがあります。数式は保持し、計算結果を推測していません。')
     elif ext=='.pptx':
         from pptx import Presentation
         deck=Presentation(path);page_count=len(deck.slides)
@@ -121,17 +136,21 @@ def extract(path, original):
             if slide.has_notes_slide:text+=slide.notes_slide.notes_text_frame.text+'\n'
     elif ext in ['.txt','.csv','.md','.json','.rtf']:
         raw=Path(path).read_bytes()
-        for enc in ['utf-8-sig','cp932','utf-16']:
+        encodings=['utf-32'] if raw.startswith((b'\xff\xfe\x00\x00',b'\x00\x00\xfe\xff')) else ['utf-16'] if raw.startswith((b'\xff\xfe',b'\xfe\xff')) else ['utf-8-sig','cp932']
+        if ext=='.rtf':
+            codepage=re.search(rb'\\ansicpg(\d+)',raw)
+            encodings=['cp'+codepage.group(1).decode()] if codepage else ['cp1252']
+        for enc in encodings:
             try: text=raw.decode(enc); break
-            except UnicodeError: pass
+            except (UnicodeError,LookupError): pass
         if not text: raise ValueError('文字コードを読めません。UTF-8で保存してください。')
         if ext=='.rtf':
             from striprtf.striprtf import rtf_to_text
             text=rtf_to_text(text)
     elif ext in ['.jpg','.jpeg','.png','.webp','.tif','.tiff','.bmp','.heic']:
-        save_photo(Path(path).read_bytes())
-        if not photos: raise ValueError('画像を開けません。JPEGまたはPNGに変換してください。')
-        with Image.open(path) as frames:
+        try:image_file=Image.open(path)
+        except (OSError,ValueError):raise ValueError('画像を開けません。JPEGまたはPNGに変換してください。')
+        with image_file as frames:
             page_count=getattr(frames,'n_frames',1)
             if page_count>8:raise ValueError('画像は一度に8ページ以内で読み取ってください。内容は省略していません。')
             pages=[];texts=[];ocr_ready=True
@@ -147,6 +166,7 @@ def extract(path, original):
         warnings.append(('無料OCRで読み取りました。' if text else 'ローカルOCRでは読み取れませんでした。Gemini設定時は画像を送信して読み取れます。')+'原本と照合してください。顔写真はプレビューで切り抜いて再利用できます。')
     else:
         raise ValueError('この形式は直接読取に対応していません。PDF・DOCX・XLSX・PPTX・画像・TXT・CSVに変換してください（旧DOC/XLSは変換が必要です）。')
+    if unreadable_media:raise ValueError('資料内に読み取れない画像形式があります。内容は省略せず停止しました。元のアプリからPDFとして保存したファイルを使用してください。')
     if ext in ['.docx','.xlsx','.xlsm','.pptx'] and len(pages)>8:raise ValueError('資料内の画像が8点を超えています。内容は省略していません。')
     if ext in ['.docx','.xlsx','.xlsm','.pptx'] and pages:
         ocr_ready=True
@@ -157,10 +177,11 @@ def extract(path, original):
             except (ValueError,subprocess.TimeoutExpired):ocr_ready=False
         warnings.append('資料内の画像にもOCRを行いました。読取結果を原本と照合してください。')
     if ext in ['.docx','.xlsx','.xlsm','.pptx','.txt','.csv','.md','.json','.rtf']:
-        text_ready=bool(text.strip()) and not photos
+        text_ready=bool(text.strip()) and not pages and not missing_parts
     if len(text)>100000:raise ValueError('資料が100,000文字を超えています。読取内容は省略していません。')
+    ocr_ready=ocr_ready and not missing_parts
     photos.sort(key=lambda p: (0 if .55<p['width']/p['height']<.95 else 1,-p['width']*p['height']))
-    return {'text':text[:100000], 'photos':photos[:10], 'pages':pages,'warnings':warnings,'textReady':text_ready,'ocrTextReady':ocr_ready,'pageCount':page_count}
+    return {'text':text, 'photos':photos[:10], 'pages':pages,'warnings':warnings,'textReady':text_ready,'ocrTextReady':ocr_ready,'pageCount':page_count}
 
 def sections(d):
     rows=lambda k: '\n'.join('　'.join(str(r.get(c,'')) for c in ['date','end','name','detail']) for r in d.get(k,[]))

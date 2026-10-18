@@ -67,7 +67,15 @@ export async function geminiAssist(input,{apiKey,model='gemini-2.5-flash',fetchI
  // the complete source in every request. Never salvage partial JSON.
  async function readFields(keys){
   const selected=task==='extract'?{...schema,properties:Object.fromEntries([...keys,'warnings'].map(k=>[k,schema.properties[k]])),required:keys}:schema;
-  try{return await requestGeminiJson({prompt:prompt+(task==='extract'?'\n今回返す項目は '+keys.join('、')+' とwarningsだけです。他の項目は出力しないでください。同じ説明を複数項目へ繰り返さず、原文に明記された情報を記載してください。':''),schema:selected,system,pages:input.textReady===true?[]:pages,apiKey,model,fetchImpl,timeoutMs,externalSignal});}
+  try{
+   const response=await requestGeminiJson({prompt:prompt+(task==='extract'?'\n今回返す項目は '+keys.join('、')+' とwarningsだけです。他の項目は出力しないでください。同じ説明を複数項目へ繰り返さず、原文に明記された情報を記載してください。':''),schema:selected,system,pages:input.textReady===true?[]:pages,apiKey,model,fetchImpl,timeoutMs,externalSignal});
+   if(task!=='extract')return response;
+   const data=response.data;
+   if(!data||typeof data!=='object'||Array.isArray(data)||!keys.some(k=>Object.hasOwn(data,k)))throw new GeminiError('INVALID_RESPONSE','AIから項目の読取結果が返りませんでした。');
+   // JSON mode can return unrequested known fields. A later group must never
+   // overwrite a valid phone/name returned by the group responsible for it.
+   return {...response,data:{...Object.fromEntries(keys.filter(k=>Object.hasOwn(data,k)).map(k=>[k,data[k]])),warnings:Array.isArray(data.warnings)?data.warnings.filter(w=>typeof w==='string'):[]}};
+  }
   catch(e){
    if(task!=='extract'||!['OUTPUT_LIMIT','GROQ_OUTPUT_LIMIT'].includes(e.code)||keys.length<2)throw e;
    const middle=Math.ceil(keys.length/2);
@@ -80,7 +88,7 @@ export async function geminiAssist(input,{apiKey,model='gemini-2.5-flash',fetchI
   const data=response.data;const warnings=Array.isArray(data?.warnings)?data.warnings.filter(w=>typeof w==='string').slice(0,30).map(w=>w.slice(0,1000)):[];
   const parsed=task==='extract'?parseExtraction(data,warnings):z.object({text:z.string().max(100000)}).parse(data);
   return {data:parsed,warnings:[...(response.compatible?['互換モードでGeminiの読取に成功しました。']:[]),...(response.split?['出力上限に合わせ項目を分割し、全項目の読取を完了しました。原文は省略していません。']:[]),...warnings,'Geminiの読取結果です。氏名・日付・経歴・写真を原本と照合してから反映してください。'],mode:'gemini'};
- }catch{throw Error('Geminiの応答を安全に読み取れませんでした。内容が不完全または制限されています。');}
+ }catch{throw new GeminiError('INVALID_RESPONSE','Geminiの応答を安全に読み取れませんでした。内容が不完全または制限されています。');}
 }
 async function requestGeminiJson({prompt,schema,system,pages=[],apiKey,model,fetchImpl,timeoutMs,thinkingBudget=0,externalSignal}){
  const parts=[{text:prompt}];for(const page of pages){const m=page.match(/^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/=]+)$/);if(m)parts.push({inlineData:{mimeType:m[1],data:m[2]}});}
@@ -97,7 +105,7 @@ async function requestGeminiJson({prompt,schema,system,pages=[],apiKey,model,fet
   payload={...request,contents:[{role:'user',parts:compatibleParts}],generationConfig:{...request.generationConfig}};delete payload.generationConfig.responseSchema;response=await send(payload);compatible=true;
   if(!response.ok)throw await providerFailure(response);
  }
- let body;try{body=await response.json();}catch{throw Error('Geminiの応答形式を読み取れませんでした。再度お試しください。');}
+ let body;try{body=await response.json();}catch{throw new GeminiError('INVALID_RESPONSE','Geminiの応答形式を読み取れませんでした。再度お試しください。');}
  let candidate=body?.candidates?.[0];
  // Retry the complete request once, never parse or apply truncated JSON.
  // Larger output is supported by this known model; do not guess other model limits.
@@ -108,5 +116,5 @@ async function requestGeminiJson({prompt,schema,system,pages=[],apiKey,model,fet
   candidate=body?.candidates?.[0];
  }
  if(candidate?.finishReason==='MAX_TOKENS')throw new GeminiError('OUTPUT_LIMIT','Geminiの結果が長さの上限で中断されました。拡張した読取枠でも完了しなかったため、不完全な内容は反映していません。資料を分割して再試行してください。');
- try{if(candidate?.finishReason&&candidate.finishReason!=='STOP')throw Error();const raw=candidate?.content?.parts?.filter(p=>!p.thought).map(p=>p.text||'').join('');return {data:JSON.parse(raw),compatible};}catch{throw Error('Geminiの応答を安全に読み取れませんでした。内容が不完全または制限されています。');}
+ try{if(candidate?.finishReason&&candidate.finishReason!=='STOP')throw Error();const raw=candidate?.content?.parts?.filter(p=>!p.thought).map(p=>p.text||'').join('');return {data:JSON.parse(raw),compatible};}catch{throw new GeminiError('INVALID_RESPONSE','Geminiの応答を安全に読み取れませんでした。内容が不完全または制限されています。');}
 }

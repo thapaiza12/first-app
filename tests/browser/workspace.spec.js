@@ -74,3 +74,23 @@ test('JPEG job OCR loads without cloud transcription and remains editable',async
  await expect(page.getByText('求人票の画像全体をOCRで読み込みました。読取テキストを確認してから自己PR作成に使用してください。')).toBeVisible();
  await page.locator('.source-box').first().getByText('読取テキストを確認・編集').click();await expect(page.locator('.source-box').first().locator('details textarea')).toHaveValue('\n'+text);expect(calls).toBe(0);
 });
+test('successful retry replaces raw job text once and clears the old failure dialog',async({page})=>{
+ const text='求人票の原文と応募条件';let calls=0;
+ await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true,loginRequired:false}}));
+ await page.route('**/api/extract',r=>r.fulfill({json:{text,textReady:false,ocrTextReady:false,pages:[],photos:[],warnings:[]}}));
+ await page.route('**/api/assist',r=>++calls===1?r.fulfill({status:502,json:{error:'一時的な読取エラー'}}):r.fulfill({json:{mode:'gemini',data:{text},warnings:[]}}));
+ await page.goto('/');await page.getByRole('button',{name:'5 志望動機・特技',exact:true}).click();await page.locator('.source-box').first().locator('input[type=file]').setInputFiles({name:'job.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
+ await expect(page.getByRole('dialog')).toContainText('一時的な読取エラー');await page.getByRole('button',{name:'AIで再試行',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+ await page.locator('.source-box').first().getByText('読取テキストを確認・編集').click();await expect(page.locator('.source-box').first().locator('details textarea')).toHaveValue(text);expect(calls).toBe(2);
+});
+test('a delayed import result cannot attach to a new applicant',async({page})=>{
+ let release,started;const pending=new Promise(r=>release=r),began=new Promise(r=>started=r);
+ await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true,loginRequired:false}}));
+ await page.route('**/api/extract',r=>r.fulfill({json:{text:'original applicant source',textReady:true,pages:[],photos:[],warnings:[]}}));
+ await page.route('**/api/assist',async r=>{started();await pending;return r.fulfill({json:{mode:'gemini',data:{name:'別の応募者の氏名'},warnings:[]}});});
+ await page.goto('/');await page.getByLabel('氏名',{exact:true}).fill('最初の応募者');await expect(page.locator('.save-status')).toContainText('保存済み');
+ await page.locator('.editor-content input[type=file]').first().setInputFiles({name:'original.txt',mimeType:'text/plain',buffer:Buffer.from('fixture')});await began;
+ // Exercise a state change while an asynchronous callback is outstanding.
+ await page.getByRole('button',{name:'新しい書類',exact:true}).evaluate(b=>b.click());await page.locator('.new-options button').first().evaluate(b=>b.click());await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('');
+ release();await expect(page.getByText('応募者が変更されたため、読取結果は反映していません。')).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('');
+});

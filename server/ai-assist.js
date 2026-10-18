@@ -2,7 +2,7 @@ import {groqAssist} from './groq-assist.js';
 import {geminiAssist} from './gemini-assist.js';
 import {ollamaAssist,ollamaStatus} from './ollama-assist.js';
 import {assist} from './local-assist.js';
-const recoverable=new Set(['QUOTA_EXCEEDED','CONNECTION_FAILED','PROVIDER_ERROR','MODEL_UNAVAILABLE']);
+const recoverable=new Set(['QUOTA_EXCEEDED','CONNECTION_FAILED','PROVIDER_ERROR','MODEL_UNAVAILABLE','INVALID_RESPONSE']);
 export async function aiAssist(input,{mode='auto',ollamaModel='gemma3:4b',apiKey,geminiModel,ollamaBaseUrl,gemini=geminiAssist,ollama=ollamaAssist,local=assist,signal,groqKey,groqModel='openai/gpt-oss-120b',groq=groqAssist}={}){
  if(input.task==='transcribe'&&(input.textReady===true||input.ocrTextReady===true)&&input.text?.trim())return {data:{text:input.text},mode:input.ocrTextReady?'local-ocr':'native-text',warnings:[input.ocrTextReady?'画像全体をローカルOCRで読み込みました。誤字を原本と照合してください。':'資料全体のテキストを原文のまま読み込みました。AI転記・API呼出しは行っていません。']};
  if(mode==='groq')return groq(input,{apiKey:groqKey,model:groqModel,signal});
@@ -12,7 +12,8 @@ export async function aiAssist(input,{mode='auto',ollamaModel='gemma3:4b',apiKey
   const textCapable=!input.pages?.length||input.textReady===true||input.ocrTextReady===true;
   if(!apiKey&&textCapable)return runGroq();
   try{return await runGemini();}catch(e){
-   if(!groqKey||(!recoverable.has(e.code)&&!['OUTPUT_LIMIT','INVALID_EVIDENCE','INVALID_DRAFT','INVALID_VERIFICATION','EMPTY_DRAFT','NO_VERIFIABLE_FACTS','UNSUPPORTED_CLAIMS'].includes(e.code)))throw e;
+   if(signal?.aborted)throw e;
+   if(!groqKey||(!recoverable.has(e.code)&&!['INVALID_API_KEY','KEY_BLOCKED','ACCESS_DENIED','REGION_UNAVAILABLE','REQUEST_REJECTED','DOCUMENT_REJECTED','OUTPUT_LIMIT','INVALID_EVIDENCE','INVALID_DRAFT','INVALID_VERIFICATION','EMPTY_DRAFT','NO_VERIFIABLE_FACTS','UNSUPPORTED_CLAIMS'].includes(e.code)))throw e;
    if(!textCapable)throw Object.assign(Error(e.message+'\nこの資料は画像の読取が必要です。選択したGroqモデルは画像を読めないため、切り替えて部分的に反映することはしません。'),{code:'VISION_UNAVAILABLE'});
    try{const result=await runGroq();return {...result,warnings:[e.message+(input.task==='write'?' Groqで原文から抽出・作成・事実確認を最初から実施しました。':' Groqで資料テキストを最初から読み取りました。'),...result.warnings]};}catch(other){throw Object.assign(Error(e.message+'\nGroqも完了しませんでした：'+other.message),{code:other.code||'AI_FAILED'});}
   }

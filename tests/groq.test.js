@@ -76,3 +76,24 @@ test('complete JPEG OCR can load a job without cloud calls and can reach Groq ex
  const job=await aiAssist({...input,task:'transcribe'},options);assert.equal(job.mode,'local-ocr');assert.equal(job.data.text,input.text);assert.equal(gemini,0);assert.equal(groq,0);
  assert.equal((await aiAssist({...input,task:'extract'},options)).mode,'groq');assert.equal(gemini,1);assert.equal(groq,1);
 });
+test('out-of-group fields and malformed warnings cannot overwrite valid phone data during retry',async()=>{
+ const result=await groqAssist({task:'extract',text:'original source'},{apiKey:'test-placeholder',fetchImpl:async(url,options)=>{
+  const body=JSON.parse(options.body);const schema=JSON.parse(body.messages[0].content.split('\n次のJSONスキーマに従うJSONオブジェクトだけを返してください。\n')[1]);
+  if(schema.required.length>13)return new Response(JSON.stringify({choices:[{finish_reason:'length',message:{content:'partial'}}]}));
+  const data=Object.fromEntries(schema.required.map(k=>[k,schema.properties[k].type==='array'?[]:'']));
+  data.phone=schema.required.includes('phone')?'090-1234-5678':'wrong phone from another group';data.warnings={invalid:'object'};
+  return ok(data);
+ }});
+ assert.equal(result.data.phone,'090-1234-5678');assert.ok(result.warnings.every(w=>typeof w==='string'));
+});
+test('special-token-looking strings in documents are counted as ordinary data',()=>{
+ assert.ok(groqRequestSize([{role:'user',content:'<|endoftext|> 求人票 <|fim_prefix|>'}]).inputTokens>0);
+});
+test('automatic Gemini then Groq still works after Gemini key or request rejection without skipping verification',async()=>{
+ for(const code of ['INVALID_API_KEY','ACCESS_DENIED','REGION_UNAVAILABLE','REQUEST_REJECTED']){
+  const calls=[];const result=await aiAssist({task:'write',document:{careerText:'source',jobText:'job'}},{mode:'gemini-groq',apiKey:'placeholder',groqKey:'placeholder',gemini:async()=>{calls.push('gemini');throw Object.assign(Error('safe provider error'),{code});},groq:async()=>{calls.push('groq');return {mode:'groq',grounding:{verified:true},warnings:[]};}});
+  assert.deepEqual(calls,['gemini','groq']);assert.equal(result.grounding.verified,true);
+ }
+ const controller=new AbortController();let fallback=false;
+ await assert.rejects(()=>aiAssist({task:'write'},{mode:'gemini-groq',apiKey:'placeholder',groqKey:'placeholder',signal:controller.signal,gemini:async()=>{controller.abort();throw Object.assign(Error('body aborted'),{code:'INVALID_RESPONSE'});},groq:async()=>{fallback=true;}}));assert.equal(fallback,false);
+});

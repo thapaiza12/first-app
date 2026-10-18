@@ -1,6 +1,7 @@
 """Build the unsigned Mac app ZIP on any platform. No credentials or user data included."""
 from pathlib import Path
 import hashlib
+import re
 import plistlib
 import stat
 import zipfile
@@ -9,6 +10,8 @@ ROOT=Path(__file__).resolve().parents[1]
 OUTPUT=ROOT/'downloads'/'MA-Group-Mac-App.zip'
 
 def build():
+    version=re.search(r"APP_VERSION='([^']+)'",(ROOT/'src/version.js').read_text()).group(1)
+    assert plistlib.loads((ROOT/'M&A Group.app/Contents/Info.plist').read_bytes())['CFBundleShortVersionString']==version
     files={}
     for name in ['package.json','package-lock.json','requirements.txt','index.html','vite.config.js']:
         files['M&A Group.app/Contents/Resources/workspace/'+name]=ROOT/name

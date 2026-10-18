@@ -82,4 +82,41 @@ class FormatCoverage(unittest.TestCase):
    p=Path(d)/'job.rtf';p.write_text(r'{\rtf1\ansi Job offer\par Final line}')
    result=documents.extract(str(p),p.name);self.assertTrue(result['textReady']);self.assertIn('Final line',result['text']);self.assertNotIn('\\rtf1',result['text'])
 
+
+class AuditRegression(unittest.TestCase):
+ def test_utf16_and_utf32_boms_are_decoded_before_legacy_japanese_encoding(self):
+  with tempfile.TemporaryDirectory() as d:
+   for encoding in ['utf-16','utf-32','utf-8-sig','cp932']:
+    p=Path(d)/'job.txt';p.write_bytes('求人票\n応募条件：英語'.encode(encoding));r=documents.extract(str(p),p.name)
+    self.assertEqual(r['text'],'求人票\n応募条件：英語');self.assertTrue(r['textReady'])
+ def test_uncached_excel_formula_is_preserved_and_never_marked_complete(self):
+  from openpyxl import Workbook
+  with tempfile.TemporaryDirectory() as d:
+   p=Path(d)/'job.xlsx';w=Workbook();w.active['A1']='="応募条件：英語"';w.active['A2']='求人票';w.save(p)
+   r=documents.extract(str(p),p.name);self.assertIn('応募条件：英語',r['text']);self.assertFalse(r['textReady']);self.assertFalse(r['ocrTextReady']);self.assertTrue(r['warnings'])
+ def test_unreadable_office_image_cannot_silently_disappear(self):
+  with tempfile.TemporaryDirectory() as d:
+   for suffix in ['docx']:
+    p=Path(d)/('job.'+suffix)
+    with zipfile.ZipFile(p,'w') as z:
+     z.writestr('word/document.xml','<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>求人票</w:t></w:r></w:p></w:body></w:document>');z.writestr('word/media/image1.emf',b'unsupported image')
+    with self.assertRaisesRegex(ValueError,'読み取れない画像形式'):documents.extract(str(p),p.name)
+ def test_native_mac_timeout_falls_back_to_available_tesseract(self):
+  from types import SimpleNamespace
+  import subprocess
+  buffer=io.BytesIO();Image.new('RGB',(300,400),'white').save(buffer,format='PNG');calls=[]
+  def invoke(args,**kwargs):
+   calls.append(args[0])
+   if args[0]=='/usr/bin/osascript':raise subprocess.TimeoutExpired(args,25)
+   return SimpleNamespace(returncode=0,stdout='日本語の求人票'.encode())
+  with patch.object(documents.sys,'platform','darwin'),patch.object(documents.shutil,'which',return_value='/usr/local/bin/tesseract'),patch.object(documents.subprocess,'run',side_effect=invoke):self.assertEqual(documents.ocr_image(buffer.getvalue()),'日本語の求人票')
+  self.assertEqual(calls,['/usr/bin/osascript','tesseract'])
+
+class RtfEncodingAudit(unittest.TestCase):
+ def test_rtf_declared_encoding_is_used_for_native_characters(self):
+  with tempfile.TemporaryDirectory() as d:
+   for codepage,value in [('1252','café'),('932','求人票')]:
+    p=Path(d)/'job.rtf';p.write_bytes(('{'+'\\rtf1\\ansi\\ansicpg'+codepage+' '+value+'}').encode('cp'+codepage))
+    self.assertIn(value,documents.extract(str(p),p.name)['text'])
+
 if __name__=='__main__':unittest.main()

@@ -4,7 +4,7 @@ import {getEncoding} from 'js-tiktoken';
 let tokenizer;
 export function groqRequestSize(messages,budget=8000){
  tokenizer??=getEncoding('o200k_base');
- const inputTokens=messages.reduce((n,m)=>n+tokenizer.encode(m.content).length+8,8);
+ const inputTokens=messages.reduce((n,m)=>n+tokenizer.encode(m.content,[],[]).length+8,8);
  return {inputTokens,outputTokens:Math.min(4096,budget-inputTokens-128)};
 }
 export class GroqError extends Error{constructor(code,message,retryAfterSeconds){super(message);this.code=code;if(retryAfterSeconds!==undefined)this.retryAfterSeconds=retryAfterSeconds;}}

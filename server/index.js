@@ -1,4 +1,5 @@
 import express from 'express';
+import {APP_VERSION} from '../src/version.js';
 import multer from 'multer';
 import {DatabaseSync} from 'node:sqlite';
 import {randomUUID} from 'node:crypto';
@@ -31,7 +32,7 @@ app.post('/api/ai/check',async(req,res,next)=>{try{
  try{const result=await aiAssist({task:'transcribe',text:'接続確認用の架空の文字列：接続OK'},{...aiSettings(),mode:provider,apiKey:process.env.GEMINI_API_KEY,groqKey:process.env.GROQ_API_KEY,geminiModel:process.env.GEMINI_MODEL});if(!result.data.text?.trim())throw Error('AIから有効な接続確認結果が返りませんでした。');res.json({mode:result.mode,providerUsage:result.providerUsage});}catch(e){res.status(502).json({error:e.message,code:e.code||'AI_CHECK_FAILED'});}
 }catch(e){next(e);}});
 app.get('/api/status',async(req,res)=>{const settings=aiSettings();const local=['auto','ollama'].includes(settings.mode)?await ollamaStatus({model:settings.ollamaModel,baseUrl:process.env.OLLAMA_BASE_URL}):{available:false,ready:false,models:[],model:settings.ollamaModel,checked:false};const selected=settings.mode==='gemini-groq'?(process.env.GEMINI_API_KEY?'gemini':process.env.GROQ_API_KEY?'groq':'local'):settings.mode==='auto'?(process.env.GEMINI_API_KEY?'gemini':local.ready?'ollama':'local'):settings.mode;
- res.json({assistMode:selected,aiSettings:settings,ollama:local,geminiConfigured:!!process.env.GEMINI_API_KEY,groqConfigured:!!process.env.GROQ_API_KEY,desktopInstance:process.env.MA_DESKTOP_INSTANCE||null,desktopMode:!!process.env.MA_DESKTOP_INSTANCE,loginRequired:false,mode:production?'production':'development'});
+ res.json({appVersion:APP_VERSION,assistMode:selected,aiSettings:settings,ollama:local,geminiConfigured:!!process.env.GEMINI_API_KEY,groqConfigured:!!process.env.GROQ_API_KEY,desktopInstance:process.env.MA_DESKTOP_INSTANCE||null,desktopMode:!!process.env.MA_DESKTOP_INSTANCE,loginRequired:false,mode:production?'production':'development'});
 });
 // Desktop controls are available only to the loopback-bound Mac background process.
 app.post('/api/desktop/settings',(req,res)=>{
