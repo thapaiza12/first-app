@@ -20,7 +20,7 @@ test('failed Gemini import preserves existing fields and retries the same upload
 test('settings tests the connection and shows actionable failures before a successful retry',async({page})=>{
  await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true,loginRequired:false,mode:'development'}}));let calls=0;
  await page.route('**/api/assist',r=>{calls++;return calls===1?r.fulfill({status:502,json:{error:'Geminiキーが無効です。',code:'INVALID_API_KEY'}}):r.fulfill({json:{data:{text:'接続OK'},mode:'gemini',warnings:[]}});});
- await page.goto('/');await page.locator('.save-status button').click();await page.getByRole('button',{name:'Gemini接続を確認 / Ollama接続を確認'}).click();await expect(page.getByRole('dialog')).toContainText('Geminiキーが無効です。');await page.getByRole('button',{name:'Gemini接続を確認 / Ollama接続を確認'}).click();await expect(page.getByRole('dialog')).toContainText('Geminiへの接続に成功しました。');expect(calls).toBe(2);
+ await page.goto('/');await page.locator('.save-status button').click();await page.getByRole('button',{name:'選択したAIの接続を確認'}).click();await expect(page.getByRole('dialog')).toContainText('Geminiキーが無効です。');await page.getByRole('button',{name:'選択したAIの接続を確認'}).click();await expect(page.getByRole('dialog')).toContainText('Geminiへの接続に成功しました。');expect(calls).toBe(2);
 });
 test('unverified writing is withheld, preserves original text, and a verified retry shows source evidence',async({page})=>{
  await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true,loginRequired:false,mode:'development'}}));let calls=0;
@@ -40,4 +40,12 @@ test('a slow import shows elapsed time and can be cancelled without applying lat
  await page.route('**/api/assist',async r=>{called();await blocked;try{await r.fulfill({json:{mode:'ollama',data:{name:'遅延した別名'},warnings:[]}});}catch{}});
  await page.goto('/');await page.getByLabel('氏名',{exact:true}).fill('保持する氏名');await page.locator('.editor-content input[type=file]').first().setInputFiles({name:'slow.txt',mimeType:'text/plain',buffer:Buffer.from('氏名：テスト')});await started;
  await expect(page.locator('.busy-overlay')).toContainText('経過時間');await page.getByRole('button',{name:'処理を中止',exact:true}).click();await expect(page.locator('.busy-overlay')).toHaveCount(0);release();await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('保持する氏名');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.file-chip').filter({hasText:'slow.txt'})).toBeVisible();
+});
+test('Groq configuration uses native key settings and tests Groq separately from Gemini',async({page})=>{
+ let selected=false,keyOpened=false;
+ await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true,groqConfigured:false,desktopMode:true,aiSettings:{mode:selected?'gemini-groq':'auto',ollamaModel:'gemma3:4b',groqModel:'llama-3.3-70b-versatile'},loginRequired:false}}));
+ await page.route('**/api/ai/settings',r=>{const data=r.request().postDataJSON();expect(data.mode).toBe('gemini-groq');expect(data.groqModel).toBe('llama-3.3-70b-versatile');expect(data).not.toHaveProperty('apiKey');selected=true;return r.fulfill({json:data});});
+ await page.route('**/api/ai/check',r=>{expect(r.request().postDataJSON()).toEqual({provider:'groq'});return r.fulfill({json:{mode:'groq'}});});
+ await page.route('**/api/desktop/groq-settings',r=>{keyOpened=true;return r.fulfill({json:{ok:true}});});
+ await page.goto('/');await page.locator('.save-status button').click();await page.getByLabel('AIの選択').selectOption('gemini-groq');await page.getByRole('button',{name:'AI設定を保存'}).click();await page.getByRole('button',{name:'Groq接続を確認',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('Groqへの接続に成功しました');await page.getByRole('button',{name:'Groqキーを設定',exact:true}).click();expect(keyOpened).toBe(true);await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.local-notice')).toContainText('Groq');
 });

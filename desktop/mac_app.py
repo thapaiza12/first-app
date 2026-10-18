@@ -68,7 +68,7 @@ return (button returned of answer) & linefeed & (text returned of answer)''')
     button,_,key=result.stdout.partition('\n')
     return button.strip(),key.strip()
 
-def get_key(force=False):
+def get_key(force=False,prompt_if_missing=True):
     # Explicit native macOS Keychain backend: no plaintext fallback.
     from keyring.backends.macOS import Keyring
     store=Keyring()
@@ -78,6 +78,7 @@ def get_key(force=False):
         saved=None
     if saved and not force:return saved
     if os.environ.get('GEMINI_API_KEY') and not force:return os.environ['GEMINI_API_KEY']
+    if not force and not prompt_if_missing:return None
     while True:
         button,key=key_dialog()
         if button is None:return saved
@@ -93,6 +94,30 @@ def get_key(force=False):
         try:store.set_password(SERVICE,ACCOUNT,key)
         except Exception:
             dialog('The key could not be saved in Keychain. It will work for this session only; you may be asked again next time.')
+        return key
+
+def get_groq_key(force=False):
+    from keyring.backends.macOS import Keyring
+    store=Keyring();service='M&A Group Groq'
+    try:saved=store.get_password(service,ACCOUNT)
+    except Exception:saved=None
+    if not force:return saved or os.environ.get('GROQ_API_KEY') or None
+    while True:
+        result=apple('''set answer to display dialog "Enter your Groq API key. It will be stored in your Mac login Keychain. Create a key at console.groq.com/keys; do not paste it in chat." with title "M&A Group — Groq" default answer "" with hidden answer buttons {"Cancel", "Remove key", "Save key"} default button "Save key"
+return (button returned of answer) & linefeed & (text returned of answer)''')
+        if result.returncode:return saved
+        button,_,key=result.stdout.partition('\n');button=button.strip();key=key.strip()
+        if button=='Remove key':
+            try:
+                if saved:store.delete_password(service,ACCOUNT)
+            except Exception:
+                dialog('Could not remove the Groq Keychain entry. Remove M&A Group Groq in Keychain Access to clear it permanently.')
+            return None
+        if not key:
+            dialog('Enter your Groq key or choose Cancel.')
+            continue
+        try:store.set_password(service,ACCOUNT,key)
+        except Exception:dialog('Groq key could not be saved in Keychain. It will be used only for this session.')
         return key
 
 def detach_server(node,python,env,port,instance,log):
@@ -129,7 +154,9 @@ def main():
             stopped=stop_current()
             dialog('M&A Group has stopped. Your saved documents are kept.' if stopped else 'M&A Group is not currently running.')
             return
-        force='--settings' in sys.argv
+        force_gemini='--settings' in sys.argv
+        force_groq='--groq-settings' in sys.argv
+        force=force_gemini or force_groq
         running=read_state()
         build_file=ROOT/'build-id.txt'
         build_id=build_file.read_text().strip() if build_file.exists() else 'source-checkout'
@@ -159,11 +186,13 @@ def main():
             os.set_inheritable(lock.fileno(),True)
             env=os.environ.copy();env['MA_GUI_LOCK_FD']=str(lock.fileno())
             # Release the Python-managed context only by replacing this process.
-            os.execve(str(python),[str(python),str(Path(__file__).resolve()),'--prepared',*(['--settings'] if force else [])],env)
-        key=get_key(force)
+            os.execve(str(python),[str(python),str(Path(__file__).resolve()),'--prepared',*(['--settings'] if force_gemini else []),*(['--groq-settings'] if force_groq else [])],env)
+        groq_key=get_groq_key(force_groq)
+        key=get_key(force_gemini,prompt_if_missing=not (force_groq or groq_key))
         if running:stop_current()
-        env=os.environ.copy();env.pop('GEMINI_API_KEY',None);env.pop('MA_GUI_LOCK_FD',None)
+        env=os.environ.copy();env.pop('GEMINI_API_KEY',None);env.pop('GROQ_API_KEY',None);env.pop('MA_GUI_LOCK_FD',None)
         if key:env['GEMINI_API_KEY']=key
+        if groq_key:env['GROQ_API_KEY']=groq_key
         port=choose_port(3001);instance=uuid.uuid4().hex
         proc=detach_server(node,python,env,port,instance,log)
         try:

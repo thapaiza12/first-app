@@ -89,3 +89,23 @@ splitting or Gemini. Factual verification is still required before drafts
 are shown. Local inference speed has not been measured on your Mac.
 If an earlier request is stuck, quit and reopen Ollama before trying this
 version. Keep gemma3:4b installed; no model, Node or Python reinstall is needed.
+
+GEMINI + GROQ — VERSION 0.7.0
+1. Create your Groq API key at https://console.groq.com/keys.
+2. Open this updated CV app, then open AI settings.
+3. Click Groqキーを設定. Paste the key ONLY into the hidden Mac dialog.
+   Choose Save key. Mac Keychain keeps it separately from your Gemini key.
+4. After the app reopens, select Geminiで読取 ＋ Groqで文章作成.
+   Keep Groqモデル as llama-3.3-70b-versatile, then click AI設定を保存.
+5. Click Groq接続を確認 to check the actual key/model connection.
+
+Gemini reads documents/images; Groq drafts and verifies applicant claims.
+Ollama is not used in this mode, so it can stay closed. No model download is
+needed. Saved modes are preserved on upgrade; select the new mode explicitly.
+The app still refuses unsupported claims. If Gemini is unavailable, this
+text-only Groq model cannot read scanned PDFs/photos. Native-text PDFs may
+use Groq. Both providers' quota limits still apply; unlimited free usage is
+not guaranteed. The current Groq free-plan limits and live Japanese document
+quality were not verified in the development environment.
+
+Never paste keys in chat, the model-name field, or a document.

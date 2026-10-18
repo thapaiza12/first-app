@@ -22,18 +22,26 @@ app.use((req,res,next)=>{res.set('X-Content-Type-Options','nosniff');res.set('Re
 app.use('/api',(req,res,next)=>{const origin=req.get('origin');if(!['GET','HEAD','OPTIONS'].includes(req.method)&&origin){try{if(new URL(origin).host!==req.get('host'))return res.status(403).json({error:'別サイトからの操作は許可されていません。'});}catch{return res.sendStatus(403);}}next();});
 app.get('/api/font',(req,res)=>{res.set('Cache-Control','public,max-age=86400');res.sendFile(path.join(root,'server/fonts/NotoSerifJP.ttf'));});
 db.exec('CREATE TABLE IF NOT EXISTS ai_settings(id INTEGER PRIMARY KEY, payload TEXT NOT NULL)');
-const aiSettingsSchema=z.object({mode:z.enum(['auto','gemini','ollama','local']),ollamaModel:z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/)});
-function aiSettings(){const row=db.prepare('SELECT payload FROM ai_settings WHERE id=1').get();return row?JSON.parse(row.payload):{mode:'auto',ollamaModel:process.env.OLLAMA_MODEL||'gemma3:4b'};}
+const aiSettingsSchema=z.object({mode:z.enum(['auto','gemini','ollama','local','gemini-groq','groq']),ollamaModel:z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/),groqModel:z.string().min(1).max(120).regex(/^[A-Za-z0-9][A-Za-z0-9._:/-]*$/).optional().default('llama-3.3-70b-versatile')});
+function aiSettings(){const row=db.prepare('SELECT payload FROM ai_settings WHERE id=1').get();return {mode:'auto',ollamaModel:process.env.OLLAMA_MODEL||'gemma3:4b',groqModel:process.env.GROQ_MODEL||'llama-3.3-70b-versatile',...(row?JSON.parse(row.payload):{})};}
 app.get('/api/ai/settings',async(req,res)=>{const settings=aiSettings();res.json({...settings,ollama:await ollamaStatus({model:settings.ollamaModel,baseUrl:process.env.OLLAMA_BASE_URL})});});
 app.put('/api/ai/settings',(req,res)=>{const settings=aiSettingsSchema.parse(req.body);db.prepare('INSERT INTO ai_settings(id,payload) VALUES(1,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload').run(JSON.stringify(settings));res.json(settings);});
-app.get('/api/status',async(req,res)=>{const settings=aiSettings();const local=await ollamaStatus({model:settings.ollamaModel,baseUrl:process.env.OLLAMA_BASE_URL});const selected=settings.mode==='auto'?(process.env.GEMINI_API_KEY?'gemini':local.ready?'ollama':'local'):settings.mode;
- res.json({assistMode:selected,aiSettings:settings,ollama:local,geminiConfigured:!!process.env.GEMINI_API_KEY,desktopInstance:process.env.MA_DESKTOP_INSTANCE||null,desktopMode:!!process.env.MA_DESKTOP_INSTANCE,loginRequired:false,mode:production?'production':'development'});
+app.post('/api/ai/check',async(req,res,next)=>{try{
+ const {provider}=z.object({provider:z.enum(['gemini','groq'])}).parse(req.body);
+ try{const result=await aiAssist({task:'transcribe',text:'接続確認用の架空の文字列：接続OK'},{...aiSettings(),mode:provider,apiKey:process.env.GEMINI_API_KEY,groqKey:process.env.GROQ_API_KEY,geminiModel:process.env.GEMINI_MODEL});if(!result.data.text?.trim())throw Error('AIから有効な接続確認結果が返りませんでした。');res.json({mode:result.mode,providerUsage:result.providerUsage});}catch(e){res.status(502).json({error:e.message,code:e.code||'AI_CHECK_FAILED'});}
+}catch(e){next(e);}});
+app.get('/api/status',async(req,res)=>{const settings=aiSettings();const local=['auto','ollama'].includes(settings.mode)?await ollamaStatus({model:settings.ollamaModel,baseUrl:process.env.OLLAMA_BASE_URL}):{available:false,ready:false,models:[],model:settings.ollamaModel,checked:false};const selected=settings.mode==='gemini-groq'?(process.env.GEMINI_API_KEY?'gemini':process.env.GROQ_API_KEY?'groq':'local'):settings.mode==='auto'?(process.env.GEMINI_API_KEY?'gemini':local.ready?'ollama':'local'):settings.mode;
+ res.json({assistMode:selected,aiSettings:settings,ollama:local,geminiConfigured:!!process.env.GEMINI_API_KEY,groqConfigured:!!process.env.GROQ_API_KEY,desktopInstance:process.env.MA_DESKTOP_INSTANCE||null,desktopMode:!!process.env.MA_DESKTOP_INSTANCE,loginRequired:false,mode:production?'production':'development'});
 });
 // Desktop controls are available only to the loopback-bound Mac background process.
 app.post('/api/desktop/settings',(req,res)=>{
  if(!process.env.MA_DESKTOP_INSTANCE||process.env.NODE_ENV==='production')return res.sendStatus(404);
  const child=spawn(process.env.PYTHON||'python3',[path.join(root,'desktop/mac_app.py'),'--settings'],{env:process.env,detached:true,stdio:'ignore'});
  child.on('error',()=>{});child.unref();res.json({ok:true});
+});
+app.post('/api/desktop/groq-settings',(req,res)=>{
+ if(!process.env.MA_DESKTOP_INSTANCE||process.env.NODE_ENV==='production')return res.sendStatus(404);
+ const child=spawn(process.env.PYTHON||'python3',[path.join(root,'desktop/mac_app.py'),'--groq-settings'],{env:process.env,detached:true,stdio:'ignore'});child.on('error',()=>{});child.unref();res.json({ok:true});
 });
 app.post('/api/desktop/stop',(req,res)=>{
  if(!process.env.MA_DESKTOP_INSTANCE||process.env.NODE_ENV==='production')return res.sendStatus(404);
@@ -55,7 +63,7 @@ app.post('/api/assist',async(req,res,next)=>{const cancellation=new AbortControl
  const input=z.object({task:z.enum(['extract','write','transcribe']),text:z.string().max(100000).optional().default(''),pages:z.array(z.string().max(12000000).regex(/^data:image\/(png|jpeg);base64,[A-Za-z0-9+/=]+$/)).max(8).optional().default([]),document:docSchema.optional(),textReady:z.boolean().optional().default(false),pageCount:z.number().int().min(0).max(40).optional().default(0)}).parse(req.body);
  if(input.task==='write'&&!input.document)return res.status(400).json({error:'応募者情報を入力してください。'});
  if(input.task==='write'&&!input.document.jobText.trim()&&!input.document.jobNotes.trim())return res.status(400).json({error:'求人票または求人についてのメモを追加してください。'});
- try{return res.json(await aiAssist(input,{...aiSettings(),apiKey:process.env.GEMINI_API_KEY,geminiModel:process.env.GEMINI_MODEL,ollamaBaseUrl:process.env.OLLAMA_BASE_URL,signal:cancellation.signal}));}catch(error){if(cancellation.signal.aborted)return;return res.status(502).json({error:error.message,code:error.code||'AI_FAILED',mode:'ai-error'});}
+ try{return res.json(await aiAssist(input,{...aiSettings(),apiKey:process.env.GEMINI_API_KEY,geminiModel:process.env.GEMINI_MODEL,ollamaBaseUrl:process.env.OLLAMA_BASE_URL,groqKey:process.env.GROQ_API_KEY,signal:cancellation.signal}));}catch(error){if(cancellation.signal.aborted)return;return res.status(502).json({error:error.message,code:error.code||'AI_FAILED',mode:'ai-error'});}
 }catch(e){next(e);}});
 app.post('/api/resume-layout',async(req,res,next)=>{try{const document=parseDoc(req.body);res.json(await python(['check'],document));}catch(e){next(e);}});
 app.post('/api/export',async(req,res,next)=>{try{const {id,format,document}=z.object({id:z.string().uuid(),format:z.enum(['pdf','docx']),document:docSchema}).parse(req.body);if(!document.confirmed)return res.status(400).json({error:'内容を確認してチェックを入れてください。'});if(!document.name.trim())return res.status(400).json({error:'氏名を入力してください。'});const historyId=randomUUID();const file=path.join(dataDir,`${historyId}.${format}`);await python(['export',format,file],document);db.prepare('INSERT INTO history VALUES(?,?,?,?,?,?)').run(historyId,id,JSON.stringify(document),format,file,new Date().toISOString());res.json({id:historyId,url:`/api/history/${historyId}/download`});}catch(e){next(e);}});

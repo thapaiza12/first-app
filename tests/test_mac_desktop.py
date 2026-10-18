@@ -36,6 +36,18 @@ class MacDesktopTests(unittest.TestCase):
         with self.keychain(store),patch.object(app,'key_dialog',return_value=('Use local tools','')):
             self.assertIsNone(app.get_key(force=True));store.delete_password.assert_called_once()
 
+    def test_groq_key_uses_its_own_keychain_service_and_no_unsolicited_prompt(self):
+        store=Mock();store.get_password.return_value=None
+        with self.keychain(store),patch.dict(os.environ,{'GROQ_API_KEY':''}),patch.object(app,'apple') as prompt:
+            self.assertIsNone(app.get_groq_key());prompt.assert_not_called()
+        response=Mock(returncode=0,stdout='Save key\ntest-only-groq-placeholder\n')
+        with self.keychain(store),patch.object(app,'apple',return_value=response):
+            self.assertEqual(app.get_groq_key(force=True),'test-only-groq-placeholder')
+            store.set_password.assert_called_once_with('M&A Group Groq',app.ACCOUNT,'test-only-groq-placeholder')
+        store.get_password.return_value='saved-groq-placeholder'
+        with self.keychain(store),patch.object(app,'apple') as prompt:
+            self.assertEqual(app.get_groq_key(),'saved-groq-placeholder');prompt.assert_not_called()
+
     def test_app_bundle_has_an_executable_and_does_not_launch_terminal(self):
         info=plistlib.loads((ROOT/'M&A Group.app/Contents/Info.plist').read_bytes())
         launcher=ROOT/'M&A Group.app/Contents/MacOS'/info['CFBundleExecutable']
