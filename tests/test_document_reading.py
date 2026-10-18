@@ -24,6 +24,16 @@ class DocumentReading(unittest.TestCase):
    for page in result['pages']:
     image=Image.open(io.BytesIO(base64.b64decode(page.split(',')[1])))
     self.assertGreaterEqual(image.width,1400)
+ def test_native_pdf_fast_path_does_not_skip_image_based_sections(self):
+  import fitz
+  with tempfile.TemporaryDirectory() as d:
+   for has_image in [False,True]:
+    p=Path(d)/('mixed.pdf' if has_image else 'native.pdf');pdf=fitz.open();page=pdf.new_page()
+    page.insert_text((30,50),'Native CV text and contact details. '*5,fontsize=8)
+    if has_image:
+     buffer=io.BytesIO();Image.new('RGB',(400,600),'white').save(buffer,format='PNG');page.insert_image(fitz.Rect(30,150,500,700),stream=buffer.getvalue())
+    pdf.save(p);pdf.close();result=documents.extract(str(p),p.name)
+    self.assertEqual(result['textReady'],not has_image)
  def test_scanned_images_keep_readable_resolution_for_gemini(self):
   with tempfile.TemporaryDirectory() as d:
    p=Path(d)/'scan.png';Image.new('RGB',(1800,2600),'white').save(p)

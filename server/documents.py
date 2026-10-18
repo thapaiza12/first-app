@@ -16,7 +16,7 @@ def ocr_image(raw):
     return result.stdout.decode('utf-8').strip()
 
 def extract(path, original):
-    ext=Path(original).suffix.lower(); text=''; photos=[]; pages=[]; warnings=[]
+    ext=Path(original).suffix.lower(); text=''; photos=[]; pages=[]; warnings=[]; text_ready=False; page_count=0
     if ext in ['.docx','.xlsx','.xlsm','.pptx']:
         with zipfile.ZipFile(path) as z:
             if len(z.infolist())>10000 or sum(i.file_size for i in z.infolist())>200*1024*1024:
@@ -33,9 +33,18 @@ def extract(path, original):
         doc=fitz.open(path)
         if doc.is_encrypted: raise ValueError('パスワード付きPDFは解除してからアップロードしてください。')
         if len(doc)>40: raise ValueError('PDFは40ページ以内に分割してください。')
-        seen=set()
+        page_count=len(doc)
+        seen=set(); native_complete=True
         for page in doc:
             page_text=page.get_text()
+            if len(page_text.strip())<80 or '\ufffd' in page_text: native_complete=False
+            for image_info in page.get_images(full=True):
+                try:
+                    for rect in page.get_image_rects(image_info[0]):
+                        fraction=rect.get_area()/page.rect.get_area()
+                        portrait=(.55<rect.width/max(rect.height,1)<.95 and rect.x0>page.rect.width*.65 and rect.y0<page.rect.height*.25 and fraction<.08)
+                        if fraction>.015 and not portrait: native_complete=False
+                except Exception: native_complete=False
             if len(page_text.strip())<20 and page.number<8:
                 try:
                     page_text=ocr_image(page.get_pixmap(matrix=fitz.Matrix(2.5,2.5)).tobytes('png'))
@@ -49,6 +58,7 @@ def extract(path, original):
                 scale=min(2.5,2400/max(page.rect.width,page.rect.height))
                 pix=page.get_pixmap(matrix=fitz.Matrix(scale,scale),alpha=False)
                 pages.append('data:image/jpeg;base64,'+base64.b64encode(pix.tobytes('jpeg',jpg_quality=90)).decode())
+        text_ready=native_complete and len(text)<=100000
         if not text.strip(): warnings.append('テキストを読み取れませんでした。原本を参照して手入力してください。')
         if len(doc)>8: warnings.append('画像ページのOCRは先頭8ページまでです。埋め込みテキストは全ページから抽出しています。')
     elif ext=='.docx':
@@ -105,7 +115,7 @@ def extract(path, original):
         raise ValueError('この形式は直接読取に対応していません。PDF・DOCX・XLSX・PPTX・画像・TXT・CSVに変換してください（旧DOC/XLSは変換が必要です）。')
     if len(text)>100000: warnings.append('読取テキストを100,000文字に制限しました。')
     photos.sort(key=lambda p: (0 if .55<p['width']/p['height']<.95 else 1,-p['width']*p['height']))
-    return {'text':text[:100000], 'photos':photos[:10], 'pages':pages,'warnings':warnings}
+    return {'text':text[:100000], 'photos':photos[:10], 'pages':pages,'warnings':warnings,'textReady':text_ready,'pageCount':page_count}
 
 def sections(d):
     rows=lambda k: '\n'.join('　'.join(str(r.get(c,'')) for c in ['date','end','name','detail']) for r in d.get(k,[]))

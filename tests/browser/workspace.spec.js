@@ -34,3 +34,10 @@ test('AI settings select Ollama and show local processing without the Google upl
  await page.route('**/api/ai/settings',r=>{const body=r.request().postDataJSON();expect(body.mode).toBe('ollama');expect(body.ollamaModel).toBe('gemma3:4b');selected=true;return r.fulfill({json:body});});
  await page.goto('/');await page.locator('.save-status button').click();await page.getByLabel('AIの選択').selectOption('ollama');await page.getByRole('button',{name:'AI設定を保存'}).click();await expect(page.getByRole('dialog')).toContainText('AI設定を保存しました');await page.getByRole('button',{name:'閉じる',exact:true}).click();await expect(page.locator('.local-notice')).toContainText('Ollama');await expect(page.getByText('アップロード後、資料のテキスト・先頭8ページの画像をGeminiへ送信して読み取ります。')).toHaveCount(0);
 });
+test('a slow import shows elapsed time and can be cancelled without applying late results',async({page})=>{
+ let release,called;const blocked=new Promise(r=>release=r),started=new Promise(r=>called=r);
+ await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'ollama',geminiConfigured:false,loginRequired:false}}));
+ await page.route('**/api/assist',async r=>{called();await blocked;try{await r.fulfill({json:{mode:'ollama',data:{name:'遅延した別名'},warnings:[]}});}catch{}});
+ await page.goto('/');await page.getByLabel('氏名',{exact:true}).fill('保持する氏名');await page.locator('.editor-content input[type=file]').first().setInputFiles({name:'slow.txt',mimeType:'text/plain',buffer:Buffer.from('氏名：テスト')});await started;
+ await expect(page.locator('.busy-overlay')).toContainText('経過時間');await page.getByRole('button',{name:'処理を中止',exact:true}).click();await expect(page.locator('.busy-overlay')).toHaveCount(0);release();await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('保持する氏名');await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.file-chip').filter({hasText:'slow.txt'})).toBeVisible();
+});

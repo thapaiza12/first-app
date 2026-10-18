@@ -79,3 +79,13 @@ two-page résumé export check, and the six-section career document with languag
 skills. The browser tab is named M&A CV creation; its address remains local.
 Install by stopping the old background app, then replacing the application in
 Applications. Documents and the Keychain key are kept outside the app bundle.
+
+8 GB MACS — VERSION 0.6.1
+Ollama now uses a smaller 8K context and bounded response size. Text-based
+PDFs can use native text directly; scanned pages are processed sequentially.
+The AI waiting screen shows elapsed time and a Cancel (処理を中止) button.
+No data is silently cut off to meet the limits. Large documents may need
+splitting or Gemini. Factual verification is still required before drafts
+are shown. Local inference speed has not been measured on your Mac.
+If an earlier request is stuck, quit and reopen Ollama before trying this
+version. Keep gemma3:4b installed; no model, Node or Python reinstall is needed.
