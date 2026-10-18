@@ -32,10 +32,11 @@ function App(){
  else{setModal({kind:'text',text:result.text,role});if(role==='source')notify('資料を読み込みました。読取テキストを確認して手入力してください。');}
  }catch(e){notify(e.message);}finally{setBusy('');}}
  async function readImport(result,role){
+  if(role==='job'&&(result.textReady===true||result.ocrTextReady===true)&&result.text?.trim()){notify(result.ocrTextReady?'求人票の画像全体をOCRで読み込みました。読取テキストを確認してから自己PR作成に使用してください。':'求人票の資料全体を原文のまま読み込みました。自己PR作成に使用できます。');return;}
   const controller=new AbortController();aiController.current=controller;
   setBusy('読取情報を整理中…');
   try{
-   const ai=await api('/assist',{method:'POST',body:JSON.stringify({task:role!=='job'?'extract':'transcribe',text:result.text,pages:result.pages,textReady:result.textReady===true,pageCount:result.pageCount||0}),signal:controller.signal});controller.signal.throwIfAborted();
+   const ai=await api('/assist',{method:'POST',body:JSON.stringify({task:role!=='job'?'extract':'transcribe',text:result.text,pages:result.textReady===true?[]:result.pages,textReady:result.textReady===true,ocrTextReady:result.ocrTextReady===true,pageCount:result.pageCount||0}),signal:controller.signal});controller.signal.throwIfAborted();
    if(ai.sourceText&&role!=='job'){const key=role==='career'?'careerText':'sourceText';const previous=latestDoc.current[key]||'';const suffix='\n'+result.text;const base=previous.endsWith(suffix)?previous.slice(0,-suffix.length):previous;patch({[key]:[base,ai.sourceText].filter(Boolean).join('\n')});}
    if(role!=='job'){setAiDraft({photo:role==='source'?result.photos?.[0]?.data:undefined,data:ai.data,warnings:[...(result.warnings||[]),...(ai.warnings||[])],sourceText:ai.sourceText||result.text,providerMode:ai.mode,mode:'extract'});setModal('ai');}
    else{setDoc(d=>({...d,jobText:[doc.jobText,ai.data.text||result.text].filter(Boolean).join('\n'),confirmed:false}));notify(['資料を追加しました。',...(ai.warnings||[])].join('\n'));}

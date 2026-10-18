@@ -52,3 +52,25 @@ test('Groq configuration uses native key settings and tests Groq separately from
  await page.route('**/api/desktop/groq-settings',r=>{keyOpened=true;return r.fulfill({json:{ok:true}});});
  await page.goto('/');await page.locator('.save-status button').click();await page.getByLabel('AIの選択').selectOption('gemini-groq');await page.getByRole('button',{name:'AI設定を保存'}).click();await page.getByRole('button',{name:'Groq接続を確認',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('Groqへの接続に成功しました');await page.getByRole('button',{name:'Groqキーを設定',exact:true}).click();expect(keyOpened).toBe(true);await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.local-notice')).toContainText('Groq');
 });
+test('native-text job upload is ready for writing with zero AI transcription calls',async({page})=>{
+ const text='求人票 全4ページの原文\n輸出入業務と英語力\n最終ページの会社情報';let aiCalls=0;
+ await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true,groqConfigured:true,aiSettings:{mode:'gemini-groq'},loginRequired:false}}));
+ await page.route('**/api/extract',r=>r.fulfill({json:{text,textReady:true,pageCount:4,pages:[],photos:[],warnings:[]}}));
+ await page.route('**/api/assist',r=>{aiCalls++;return r.fulfill({status:502,json:{error:'This transcription must never be called'}});});
+ await page.goto('/');await page.getByRole('button',{name:'5 志望動機・特技',exact:true}).click();
+ await page.locator('.source-box').first().locator('input[type=file]').setInputFiles({name:'job.pdf',mimeType:'application/pdf',buffer:Buffer.from('test fixture')});
+ await expect(page.getByText('求人票の資料全体を原文のまま読み込みました。自己PR作成に使用できます。')).toBeVisible();
+ await page.locator('.source-box').first().getByText('読取テキストを確認・編集').click();
+ await expect(page.locator('.source-box').first().locator('details textarea')).toHaveValue(text.startsWith('\n')?text:'\n'+text);
+ expect(aiCalls).toBe(0);await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+test('JPEG job OCR loads without cloud transcription and remains editable',async({page})=>{
+ const text='JPEGの求人票から読み取った応募条件と会社情報';let calls=0;
+ await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true,groqConfigured:true,loginRequired:false}}));
+ await page.route('**/api/extract',r=>r.fulfill({json:{text,textReady:false,ocrTextReady:true,pageCount:1,pages:['data:image/jpeg;base64,YWJj'],photos:[],warnings:['OCRの誤字を確認してください。']}}));
+ await page.route('**/api/assist',r=>{calls++;return r.fulfill({status:502,json:{error:'Cloud quota must not affect loading this image'}});});
+ await page.goto('/');await page.getByRole('button',{name:'5 志望動機・特技',exact:true}).click();
+ await page.locator('.source-box').first().locator('input[type=file]').setInputFiles({name:'job.jpg',mimeType:'image/jpeg',buffer:Buffer.from('test fixture')});
+ await expect(page.getByText('求人票の画像全体をOCRで読み込みました。読取テキストを確認してから自己PR作成に使用してください。')).toBeVisible();
+ await page.locator('.source-box').first().getByText('読取テキストを確認・編集').click();await expect(page.locator('.source-box').first().locator('details textarea')).toHaveValue('\n'+text);expect(calls).toBe(0);
+});

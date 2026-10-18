@@ -48,7 +48,7 @@ def setup(node, npm):
     for name, digest in expected.items():
         if file_hash(ROOT / 'server' / 'ocr' / name) != digest:
             raise RuntimeError('Bundled OCR data failed verification. Download a fresh package.')
-    if not shutil.which('tesseract'):
+    if sys.platform!='darwin' and not shutil.which('tesseract'):
         print('\nOptional OCR is unavailable: install Tesseract to read scans/images.\nText documents, editing and exports remain available.\n', flush=True)
     return python
 

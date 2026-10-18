@@ -4,11 +4,12 @@ import {ollamaAssist,ollamaStatus} from './ollama-assist.js';
 import {assist} from './local-assist.js';
 const recoverable=new Set(['QUOTA_EXCEEDED','CONNECTION_FAILED','PROVIDER_ERROR','MODEL_UNAVAILABLE']);
 export async function aiAssist(input,{mode='auto',ollamaModel='gemma3:4b',apiKey,geminiModel,ollamaBaseUrl,gemini=geminiAssist,ollama=ollamaAssist,local=assist,signal,groqKey,groqModel='openai/gpt-oss-120b',groq=groqAssist}={}){
+ if(input.task==='transcribe'&&(input.textReady===true||input.ocrTextReady===true)&&input.text?.trim())return {data:{text:input.text},mode:input.ocrTextReady?'local-ocr':'native-text',warnings:[input.ocrTextReady?'画像全体をローカルOCRで読み込みました。誤字を原本と照合してください。':'資料全体のテキストを原文のまま読み込みました。AI転記・API呼出しは行っていません。']};
  if(mode==='groq')return groq(input,{apiKey:groqKey,model:groqModel,signal});
  if(mode==='gemini-groq'){
   const runGemini=()=>{if(!apiKey)throw Object.assign(Error('画像の読取にはGeminiキーを設定してください。'),{code:'MISSING_API_KEY'});return gemini(input,{apiKey,model:geminiModel||'gemini-2.5-flash',signal});};
   const runGroq=()=>groq(input,{apiKey:groqKey,model:groqModel,signal});
-  const textCapable=!input.pages?.length||input.textReady===true;
+  const textCapable=!input.pages?.length||input.textReady===true||input.ocrTextReady===true;
   if(!apiKey&&textCapable)return runGroq();
   try{return await runGemini();}catch(e){
    if(!groqKey||(!recoverable.has(e.code)&&!['OUTPUT_LIMIT','INVALID_EVIDENCE','INVALID_DRAFT','INVALID_VERIFICATION','EMPTY_DRAFT','NO_VERIFIABLE_FACTS','UNSUPPORTED_CLAIMS'].includes(e.code)))throw e;

@@ -41,4 +41,45 @@ class DocumentReading(unittest.TestCase):
     result=documents.extract(str(p),p.name)
    image=Image.open(io.BytesIO(base64.b64decode(result['pages'][0].split(',')[1])))
    self.assertEqual(image.size,(1800,2600))
+
+class FormatCoverage(unittest.TestCase):
+ def test_text_word_excel_and_powerpoint_tables_have_complete_native_text(self):
+  from docx import Document
+  from openpyxl import Workbook
+  from pptx import Presentation
+  from pptx.util import Inches
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d)
+   for suffix in ['txt','csv','md','json']:
+    p=root/('job.'+suffix);p.write_text('求人票\n輸出入業務と英語力\n最終行',encoding='utf-8')
+    result=documents.extract(str(p),p.name);self.assertTrue(result['textReady']);self.assertIn('最終行',result['text'])
+   p=root/'job.docx';doc=Document();doc.add_paragraph('求人票：輸出入業務');doc.add_table(rows=1,cols=1).cell(0,0).text='最終セル';doc.save(p)
+   result=documents.extract(str(p),p.name);self.assertTrue(result['textReady']);self.assertIn('最終セル',result['text'])
+   p=root/'job.xlsx';book=Workbook();book.active['A1']='第一シート';book.create_sheet('最終シート')['C3']='最終セル';book.save(p)
+   result=documents.extract(str(p),p.name);self.assertTrue(result['textReady']);self.assertIn('最終シート',result['text']);self.assertIn('最終セル',result['text'])
+   p=root/'job.pptx';deck=Presentation();slide=deck.slides.add_slide(deck.slide_layouts[6]);slide.shapes.add_table(1,1,0,0, Inches(4), Inches(1)).table.cell(0,0).text='表内の応募条件';deck.save(p)
+   result=documents.extract(str(p),p.name);self.assertTrue(result['textReady']);self.assertIn('表内の応募条件',result['text'])
+ def test_jpeg_png_and_multi_page_tiff_are_ocr_ready_only_if_every_image_was_read(self):
+  with tempfile.TemporaryDirectory() as d:
+   for suffix in ['jpg','png','tiff']:
+    p=Path(d)/('scan.'+suffix);image=Image.new('RGB',(300,400),'white')
+    image.save(p,save_all=suffix=='tiff',append_images=[image] if suffix=='tiff' else [])
+    expected=2 if suffix=='tiff' else 1
+    with patch.object(documents,'ocr_image',side_effect=['第'+str(i)+'ページの原文' for i in range(expected)]):result=documents.extract(str(p),p.name)
+    self.assertFalse(result['textReady']);self.assertTrue(result['ocrTextReady']);self.assertEqual(result['pageCount'],expected)
+    self.assertIn('第'+str(expected-1)+'ページの原文',result['text'])
+   with patch.object(documents,'ocr_image',side_effect=['最初のページ','']):result=documents.extract(str(p),p.name)
+   self.assertFalse(result['ocrTextReady'])
+ def test_mac_ocr_uses_native_vision_and_removes_its_temporary_image(self):
+  from types import SimpleNamespace
+  buffer=io.BytesIO();Image.new('RGB',(300,400),'white').save(buffer,format='PNG');paths=[]
+  def invoke(args,**kwargs):
+   paths.append(Path(args[-1]));self.assertTrue(paths[-1].exists());self.assertIn('mac_ocr.js',args[-2]);return SimpleNamespace(returncode=0,stdout='{"text":"画像の日本語"}'.encode())
+  with patch.object(documents.sys,'platform','darwin'),patch.object(documents.subprocess,'run',side_effect=invoke):self.assertEqual(documents.ocr_image(buffer.getvalue()),'画像の日本語')
+  self.assertFalse(paths[0].exists())
+ def test_rtf_is_decoded_as_text_instead_of_returning_control_codes(self):
+  with tempfile.TemporaryDirectory() as d:
+   p=Path(d)/'job.rtf';p.write_text(r'{\rtf1\ansi Job offer\par Final line}')
+   result=documents.extract(str(p),p.name);self.assertTrue(result['textReady']);self.assertIn('Final line',result['text']);self.assertNotIn('\\rtf1',result['text'])
+
 if __name__=='__main__':unittest.main()

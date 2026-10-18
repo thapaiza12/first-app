@@ -46,7 +46,9 @@ Logs are in ~/Library/Logs/M&A Group/app.log. If setup does not finish, open
 that file in TextEdit and share the error text (never an API key).
 
 Manual editing, local text-document readers, exports and history work offline.
-Gemini needs internet. Tesseract is optional for offline scans/image OCR.
+Gemini and Groq need internet. Mac image OCR uses built-in macOS Vision.
+Tesseract is an optional fallback; no separate OCR installation is required
+for the native Mac path.
 No hosting account or company password is needed.
 
 The background lifecycle and packaging are tested on Linux. macOS-specific
@@ -60,7 +62,7 @@ skills. The browser tab is named M&A CV creation; its address remains local.
 Install by stopping the old background app, then replacing the application in
 Applications. Documents and the Keychain key are kept outside the app bundle.
 
-GEMINI + GROQ — VERSION 0.7.5
+GEMINI + GROQ — VERSION 0.7.6
 1. Create your Groq API key at https://console.groq.com/keys.
 2. Open this updated CV app, then open AI settings.
 3. Click Groqキーを設定. Paste the key ONLY into the hidden Mac dialog.
@@ -89,3 +91,10 @@ creates only the requested section. Verification runs in smaller batches
 with complete source text. No applicant documents are included in this ZIP.
 Existing keys and saved documents are retained. The first launch may refresh
 Node dependencies automatically; Node/Python do not need reinstalling.
+
+VERSION 0.7.6: PDF, Word, Excel, PowerPoint and text job documents use their
+complete readable text directly. JPEG/PNG and scans use local OCR when
+available. OCR text stays editable and must be checked against the image.
+Cut-off AI extraction automatically retries smaller field groups against
+the complete source. No partial JSON is applied. Generated writing still
+uses Gemini first and then Groq, with the original factual checks.

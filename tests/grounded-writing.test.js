@@ -95,3 +95,8 @@ test('uploading the identical original as resume and career does not double requ
  const result=writingSources({sourceText:resume,careerText:resume,jobText:job});
  assert.equal(result.sources.length,1);assert.equal(result.sources[0].text,resume);
 });
+test('cut-off writing evidence is discarded and retried compactly with the complete original',async()=>{
+ let calls=0;const next=sequence([plan,honest,verified]);
+ const result=await groundedWrite(doc,{generate:async(prompt,schema,options)=>{calls++;if(calls===1)throw Object.assign(Error('cut off'),{code:'GROQ_OUTPUT_LIMIT'});if(calls===2){assert.match(prompt,/出力上限への対応/);assert.match(prompt,/法人営業は未経験/);}return next(prompt,schema,options);}});
+ assert.equal(result.grounding.verified,true);assert.equal(calls,4);
+});

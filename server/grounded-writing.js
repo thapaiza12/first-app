@@ -43,7 +43,7 @@ async function checkedGenerate(generate,prompt,responseSchema,validator,options)
  let correction='';let parsed;
  prompt+='\n形式制約：factsは60件以内、matches・gapsは各30件以内。各文字列4000文字以内。各項目の文は12件以内・1文1200文字以内。checksは48件以内。必須一覧は省略せず、不明な一覧はnullではなく[]を返してください。';
  for(let attempt=0;attempt<2;attempt++){
-  const result=await generate(prompt+correction,responseSchema,options);
+  let result;try{result=await generate(prompt+correction,responseSchema,options);}catch(e){if(attempt===0&&['GROQ_OUTPUT_LIMIT','OUTPUT_LIMIT'].includes(e.code)){correction='\n【出力上限への対応】前回の途中の応答は使わず、元の資料から短いJSONを作り直してください。根拠は求人に関連する3件以内、quoteは原文の必要な連続箇所100字以内、claimは50字以内、一致点・不足点は各1件以内。下書きは指定された項目のみ各2文以内。事実確認では指定された全文を必ず判定し、reasonは短くしてください。元の資料のない事実は追加しないでください。';continue;}throw e;}
   parsed=validator.safeParse(result);
   if(parsed.success)return parsed.data;
   const issues=parsed.error.issues.slice(0,12).map(issue=>({field:issue.path.join('.'),code:issue.code}));
@@ -59,7 +59,7 @@ export async function groundedWrite(document,{generate,verificationBatchSize=48}
  if(!job.trim())throw new GroundingError('MISSING_JOB','求人票または求人メモを追加してください。');
  if(!sources.length)throw new GroundingError('MISSING_APPLICANT_EVIDENCE','応募者の経歴資料または実際の職歴・スキルを追加してください。求人票や以前の生成文だけでは経歴を作成できません。');
  let plan;
- try{plan=await checkedGenerate(generate,`【STEP 1: EVIDENCE】\n${policy}\n応募者資料から確認できる事実だけを抽出し、それぞれid、claim、sourceId、原文の連続した引用quoteを付けてください。希望職種や未経験の記述を経験として抽出しないでください。求人との一致点matchesには原文のjobQuoteと対応するfactIdsを付け、不一致はgapsへ記載してください。一致点がなくても応募者の実際の経験をfactsへ残してください。quoteは要約・改変禁止です。担当業務から成果や能力を推論することも禁止です。\n${JSON.stringify({applicantSources:sources,jobRequirements:job})}`,planResponse,planSchema);}catch(e){if(e instanceof z.ZodError)throw new GroundingError('INVALID_EVIDENCE','AIが経歴の根拠を所定の形式で返さず、自動修正でも完了しませんでした。経歴の不足と判定したものではありません。下書きは反映していません。');throw e;}
+ try{plan=await checkedGenerate(generate,`【STEP 1: EVIDENCE】\n${policy}\n応募者資料をすべて確認し、今回の応募文に関連する事実を3件程度選んでください。それぞれid、50字以内のclaim、sourceId、原文の必要な連続箇所100字以内のquoteを付けてください。全経歴を再転記する必要はありません。希望職種や未経験の記述を経験として抽出しないでください。求人との一致点matchesには原文のjobQuoteと対応するfactIdsを付け、不一致はgapsへ記載してください。一致点がなくても応募者の実際の経験をfactsへ残してください。quoteは要約・改変禁止です。担当業務から成果や能力を推論することも禁止です。\n${JSON.stringify({applicantSources:sources,jobRequirements:job})}`,planResponse,planSchema);}catch(e){if(e instanceof z.ZodError)throw new GroundingError('INVALID_EVIDENCE','AIが経歴の根拠を所定の形式で返さず、自動修正でも完了しませんでした。経歴の不足と判定したものではありません。下書きは反映していません。');throw e;}
  const facts=plan.facts.filter((f,i,all)=>all.findIndex(v=>v.id===f.id)===i&&sources.some(s=>s.id===f.sourceId&&includesQuote(s.text,f.quote)));
  if(!facts.length)throw new GroundingError('NO_VERIFIABLE_FACTS','応募者資料から引用できる経歴・スキルが確認できませんでした。経歴資料を確認してください。');
  const factMap=new Map(facts.map(f=>[f.id,f]));
