@@ -4,11 +4,13 @@ import {ArrowRight,ArrowLeft,Plus,Check,CheckCircle2,ChevronRight,ChevronDown,Fi
 import {emptyDocument,resumeSteps,careerSteps,languageLevels} from './model';
 import {normalizeExperience,employmentEvents} from './employment';
 import './style.css';
+import {isRateLimitError} from '../server/api-rate-status.js';
 const api=async(url,options={})=>{const res=await fetch('/api'+url,{...options,headers:options.body instanceof FormData?{}:{'Content-Type':'application/json',...options.headers}});const data=await res.json().catch(()=>({error:'サーバーに接続できません。'}));if(!res.ok){const error=Error(data.error||'操作を完了できませんでした。');error.code=data.code;throw error;}return data;};
 const iconProps={size:19,strokeWidth:1.7};
 function App(){
  const [layout,setLayout]=useState(null);const [providerSettings,setProviderSettings]=useState({mode:'gemini-groq',groqModel:'openai/gpt-oss-120b'});const [ollamaInfo,setOllamaInfo]=useState(null);const [connectionCheck,setConnectionCheck]=useState(null);
  const [status,setStatus]=useState(null),[view,setView]=useState('editor'),[doc,setDoc]=useState(emptyDocument()),[id,setId]=useState(null),[step,setStep]=useState(0),[history,setHistory]=useState([]),[drafts,setDrafts]=useState([]),[toast,setToast]=useState(''),[busy,setBusy]=useState(''),[saved,setSaved]=useState('未保存'),[modal,setModal]=useState(null),[aiDraft,setAiDraft]=useState(null),[photoSources,setPhotoSources]=useState([]),[query,setQuery]=useState(''),[preview,setPreview]=useState(false);
+ const [aiNotice,setAiNotice]=useState('');
  const aiController=useRef(null);const [busySeconds,setBusySeconds]=useState(0);const busyActive=!!busy;
  useEffect(()=>{if(!busyActive)return;const start=Date.now();setBusySeconds(0);const timer=setInterval(()=>setBusySeconds(Math.floor((Date.now()-start)/1000)),1000);return()=>clearInterval(timer);},[busyActive]);
  const savedRevision=useRef(''),pendingCreate=useRef(null),activeId=useRef(id),latestDoc=useRef(doc);activeId.current=id;latestDoc.current=doc;
@@ -33,7 +35,7 @@ function App(){
  }catch(e){notify(e.message);}finally{setBusy('');}}
  async function readImport(result,role){
   if(role==='job'&&(result.textReady===true||result.ocrTextReady===true)&&result.text?.trim()){setModal(null);setAiDraft(null);notify(result.ocrTextReady?'求人票の画像全体をOCRで読み込みました。読取テキストを確認してから自己PR作成に使用してください。':'求人票の資料全体を原文のまま読み込みました。自己PR作成に使用できます。');return;}
-  const targetId=activeId.current;const controller=new AbortController();aiController.current=controller;
+  setAiNotice('');const targetId=activeId.current;const controller=new AbortController();aiController.current=controller;
   setBusy('読取情報を整理中…');
   try{
    const ai=await api('/assist',{method:'POST',body:JSON.stringify({task:role!=='job'?'extract':'transcribe',text:result.text,pages:result.textReady===true?[]:result.pages,textReady:result.textReady===true,ocrTextReady:result.ocrTextReady===true,pageCount:result.pageCount||0}),signal:controller.signal});controller.signal.throwIfAborted();if(activeId.current!==targetId){notify('応募者が変更されたため、読取結果は反映していません。');return;}
@@ -43,13 +45,14 @@ function App(){
   }catch(e){
    if(activeId.current!==targetId){notify('応募者が変更されたため、読取結果は反映していません。');return;}
    if(controller.signal.aborted){notify('AI処理を中止しました。読み込んだ資料は保存されています。');return;}
-   setAiDraft({data:{},warnings:[e.message],providerMode:'gemini-error',mode:'extract',sourceText:result.text,retryResult:result,retryRole:role,errorCode:e.code});setModal('ai');
+   if(isRateLimitError(e.code)){setModal(null);setAiNotice('AIが混み合っています。自動再試行後も、現在は利用枠が空いていません。資料・入力は保持しています。時間を置いて再試行してください。');return;}setAiDraft({data:{},warnings:[e.message],providerMode:'gemini-error',mode:'extract',sourceText:result.text,retryResult:result,retryRole:role,errorCode:e.code});setModal('ai');
   }finally{if(aiController.current===controller){aiController.current=null;setBusy('');}}
  }
  async function saveProvider(){try{await api('/ai/settings',{method:'PUT',body:JSON.stringify(providerSettings)});const next=await api('/status');setStatus(next);setOllamaInfo(next.ollama);setConnectionCheck('AI設定を保存しました。');}catch(e){setConnectionCheck(e.message);}}
  async function checkGroq(){setConnectionCheck('Groq接続を確認中…');try{const result=await api('/ai/check',{method:'POST',body:JSON.stringify({provider:'groq'})});setConnectionCheck(result.mode==='groq'?'Groqへの接続に成功しました。':'Groq接続を確認できませんでした。');}catch(e){setConnectionCheck(e.message);}}
  async function checkGemini(){setConnectionCheck('接続を確認中…');try{const result=await api('/assist',{method:'POST',body:JSON.stringify({task:'transcribe',text:'接続確認用の架空の資料です。「接続OK」とだけtextに転記してください。'})});setConnectionCheck(result.mode==='gemini'?'Geminiへの接続に成功しました。':result.mode==='ollama'?'Ollamaへの接続に成功しました。':result.mode==='groq'?'Groqへの接続に成功しました。':'生成AIは未設定です。ローカル処理が有効です。');}catch(e){setConnectionCheck(e.message);}}
  async function writeAI(){
+  setAiNotice('');
   if(!doc.jobText.trim()&&!doc.jobNotes.trim())return notify('求人票または求人についてのメモを追加してください。');
   const controller=new AbortController();aiController.current=controller;
   setBusy('応募者の資料と照合して下書きを作成中…');
@@ -58,7 +61,7 @@ function App(){
    const r=await api('/assist',{method:'POST',body:JSON.stringify({task:'write',document:JSON.parse(requestDocument)}),signal:controller.signal});controller.signal.throwIfAborted();
    if(activeId.current!==requestId||JSON.stringify(latestDoc.current)!==requestDocument)throw Error('応募者または資料が変更されたため、下書きを表示していません。現在の資料でもう一度作成してください。');
    setAiDraft({...r,providerMode:r.mode,mode:'write'});setModal('ai');
-  }catch(e){if(controller.signal.aborted){notify('AI処理を中止しました。入力済みの文章は変更していません。');return;}setAiDraft({data:{},warnings:[e.message],providerMode:'grounding-error',mode:'write'});setModal('ai');}finally{if(aiController.current===controller){aiController.current=null;setBusy('');}}
+  }catch(e){if(controller.signal.aborted){notify('AI処理を中止しました。入力済みの文章は変更していません。');return;}if(isRateLimitError(e.code)){setModal(null);setAiNotice('AIが混み合っています。自動再試行後も、現在は利用枠が空いていません。資料・入力は保持しています。時間を置いて再試行してください。');return;}setAiDraft({data:{},warnings:[e.message],providerMode:'grounding-error',mode:'write'});setModal('ai');}finally{if(aiController.current===controller){aiController.current=null;setBusy('');}}
  }
  async function exportFile(format){if(!doc.confirmed)return notify('書類の内容を確認し、確認チェックを入れてください。');setBusy(format.toUpperCase()+'を作成中…');try{const current=await ensureId();await api('/documents/'+current,{method:'PUT',body:JSON.stringify(doc)});const r=await api('/export',{method:'POST',body:JSON.stringify({id:current,format,document:doc})});const a=document.createElement('a');a.href=r.url;a.download='';document.body.append(a);a.click();a.remove();refresh();notify('書類を作成し、生成履歴に保存しました。');}catch(e){notify(e.message);}finally{setBusy('');}}
  const usesAI=['gemini','ollama','groq'].includes(status?.assistMode);
@@ -123,7 +126,8 @@ function App(){
    </main>
   </div>
   <button className="mobile-preview-toggle" onClick={()=>setPreview(true)}><FileText size={16}/>プレビュー</button>
-  {busy&&<div className="busy-overlay"><div><LoaderCircle className="spin" size={25}/><strong>{busy}</strong><span>経過時間：{busySeconds}秒</span><span>資料を処理しています。画面を閉じずにお待ちください。</span>{aiController.current&&<button className="btn secondary" onClick={()=>aiController.current?.abort()}>処理を中止</button>}</div></div>}
+  {aiNotice&&<div className="warning-inline" role="status" style={{position:'fixed',bottom:24,left:'15%',right:'5%',zIndex:60}}>{aiNotice}<button className="text-btn" onClick={()=>setAiNotice('')}>閉じる</button></div>}
+  {busy&&<div className="busy-overlay"><div><LoaderCircle className="spin" size={25}/><strong>{busy}</strong><span>経過時間：{busySeconds}秒</span><span>資料を処理しています。混雑時は15秒・30秒・60秒の間隔で自動再試行し、自動モードでは別のAIへ切り替えます。数分かかる場合があります。中止できます。</span>{aiController.current&&<button className="btn secondary" onClick={()=>aiController.current?.abort()}>処理を中止</button>}</div></div>}
   {toast&&<div className="toast" role="status"><AlertCircle size={18}/><span>{toast}</span><button onClick={()=>setToast('')}><X size={16}/></button></div>}
   {preview&&<Modal title="書類プレビュー" onClose={()=>setPreview(false)} wide><p className="modal-subtitle">長い内容は、ダウンロード時に自動で改ページされます。</p><div className="large-preview"><Paper doc={doc}/></div><div className="modal-actions"><button className="btn secondary" onClick={()=>{setPreview(false);setStep(6);}}>確認・出力へ<ArrowRight size={15}/></button></div></Modal>}
   {modal==='new'&&<Modal title="新しい書類を作成" onClose={()=>setModal(null)}><p className="modal-subtitle">作成する書類を選んでください。現在の下書きは保存されます。</p><div className="new-options">{['rirekisho','shokumukeirekisho'].map(type=><button onClick={()=>newDoc(type)} key={type}><span className="option-icon">{type==='rirekisho'?<FileText/>:<BriefcaseBusiness/>}</span><strong>{type==='rirekisho'?'履歴書':'職務経歴書'}</strong><p>{type==='rirekisho'?'基本情報・学歴・職歴・志望動機':'職務要約・経験・スキル・自己PR'}</p><ArrowRight size={18}/></button>)}</div></Modal>}

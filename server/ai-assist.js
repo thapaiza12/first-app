@@ -1,3 +1,4 @@
+import {isRateLimitError} from './api-rate-status.js';
 import {groqAssist} from './groq-assist.js';
 import {geminiAssist} from './gemini-assist.js';
 import {ollamaAssist,ollamaStatus} from './ollama-assist.js';
@@ -15,7 +16,7 @@ export async function aiAssist(input,{mode='auto',ollamaModel='gemma3:4b',apiKey
    if(signal?.aborted)throw e;
    if(!groqKey||(!recoverable.has(e.code)&&!['INVALID_API_KEY','KEY_BLOCKED','ACCESS_DENIED','REGION_UNAVAILABLE','REQUEST_REJECTED','DOCUMENT_REJECTED','OUTPUT_LIMIT','INVALID_EVIDENCE','INVALID_DRAFT','INVALID_VERIFICATION','EMPTY_DRAFT','NO_VERIFIABLE_FACTS','UNSUPPORTED_CLAIMS'].includes(e.code)))throw e;
    if(!textCapable)throw Object.assign(Error(e.message+'\nこの資料は画像の読取が必要です。選択したGroqモデルは画像を読めないため、切り替えて部分的に反映することはしません。'),{code:'VISION_UNAVAILABLE'});
-   try{const result=await runGroq();return {...result,warnings:[e.message+(input.task==='write'?' Groqで原文から抽出・作成・事実確認を最初から実施しました。':' Groqで資料テキストを最初から読み取りました。'),...result.warnings]};}catch(other){throw Object.assign(Error(e.message+'\nGroqも完了しませんでした：'+other.message),{code:other.code||'AI_FAILED'});}
+   try{const result=await runGroq();return {...result,warnings:[(isRateLimitError(e.code)?'Geminiが混み合っているため、Groqへ自動で切り替えました。':e.message)+(input.task==='write'?' Groqで原文から抽出・作成・事実確認を最初から実施しました。':' Groqで資料テキストを最初から読み取りました。'),...result.warnings]};}catch(other){throw Object.assign(Error(e.message+'\nGroqも完了しませんでした：'+other.message),{code:other.code||'AI_FAILED'});}
   }
  }
  const runLocalModel=()=>ollama(input,{model:ollamaModel,baseUrl:ollamaBaseUrl,signal});

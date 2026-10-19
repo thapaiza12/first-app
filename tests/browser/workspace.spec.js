@@ -94,3 +94,14 @@ test('a delayed import result cannot attach to a new applicant',async({page})=>{
  await page.getByRole('button',{name:'新しい書類',exact:true}).evaluate(b=>b.click());await page.locator('.new-options button').first().evaluate(b=>b.click());await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('');
  release();await expect(page.getByText('応募者が変更されたため、読取結果は反映していません。')).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('');
 });
+
+test('exhausted rate limits show a friendly status without an error dialog or data loss',async({page})=>{
+ await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true,aiSettings:{mode:'gemini-groq'}}}));
+ await page.route('**/api/assist',r=>r.fulfill({status:502,json:{error:'provider quota detail',code:'GROQ_QUOTA_EXCEEDED'}}));
+ await page.goto('/');await page.getByLabel('氏名',{exact:true}).fill('保持する氏名');
+ await page.locator('.editor-content input[type=file]').first().setInputFiles({name:'rate-test.txt',mimeType:'text/plain',buffer:Buffer.from('氏名：保持する氏名')});
+ await expect(page.getByRole('status').filter({hasText:'AIが混み合っています'})).toBeVisible();
+ await expect(page.getByRole('dialog')).toHaveCount(0);
+ await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('保持する氏名');
+ await expect(page.locator('.file-chip').filter({hasText:'rate-test.txt'})).toBeVisible();
+});

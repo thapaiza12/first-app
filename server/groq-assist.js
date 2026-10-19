@@ -1,3 +1,4 @@
+import {rateLimitedFetch} from './api-rate-limit.js';
 import {geminiAssist} from './gemini-assist.js';
 import {writingPolicy} from './grounded-writing.js';
 import {getEncoding} from 'js-tiktoken';
@@ -9,7 +10,7 @@ export function groqRequestSize(messages,budget=8000){
 }
 export class GroqError extends Error{constructor(code,message,retryAfterSeconds){super(message);this.code=code;if(retryAfterSeconds!==undefined)this.retryAfterSeconds=retryAfterSeconds;}}
 function standardSchema(value){if(Array.isArray(value))return value.map(standardSchema);if(!value||typeof value!=='object')return value;return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,k==='type'&&typeof v==='string'?v.toLowerCase():standardSchema(v)]));}
-export async function groqAssist(input,{apiKey,model='openai/gpt-oss-120b',fetchImpl=fetch,timeoutMs=180000,signal,requestTokenBudget=8000}={}){
+export async function groqAssist(input,{apiKey,model='openai/gpt-oss-120b',fetchImpl=rateLimitedFetch,timeoutMs=600000,signal,requestTokenBudget=8000}={}){
  if(!apiKey)throw new GroqError('MISSING_GROQ_API_KEY','Groq APIキーを設定してください。');
  if(!/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$/.test(model))throw new GroqError('GROQ_MODEL_INVALID','Groqモデル名を確認してください。');
  if(input.pages?.length&&!input.textReady&&!input.ocrTextReady)throw new GroqError('GROQ_TEXT_ONLY','このGroqモデルは画像を読めません。スキャンPDF・写真はGeminiで読み取ってください。PDFに十分な埋め込みテキストがあればGroqを使用できます。');
