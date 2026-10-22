@@ -1,3 +1,4 @@
+import {normalizePreferences} from '../src/preferences.js';
 import express from 'express';
 import {APP_VERSION} from '../src/version.js';
 import multer from 'multer';
@@ -52,7 +53,7 @@ const str=z.string().max(25000);const row=z.object({date:str.optional().default(
 const fields=['documentDate','alternateAddress','alternateAddressKana','alternatePostalCode','alternatePhone','title','name','furigana','birthDate','gender','postalCode','address','addressKana','phone','email','motivation','strengths','preferences','summary','skills','techSkills','additional','jobNotes','careerNotes','jobText','careerText','sourceText'];
 const shape=Object.fromEntries(fields.map(k=>[k,(k.endsWith('Text')?z.string().max(100000):str).optional().default('')]));
 const docSchema=z.object({...shape,type:z.enum(['rirekisho','shokumukeirekisho']),photoVerified:z.boolean().optional().default(false),photo:z.string().max(8000000).refine(v=>!v||/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v)).optional().default(''),education:z.array(row).max(100).default([]),experience:z.array(row).max(100).default([]).transform(normalizeExperience),licenses:z.array(row).max(100).default([]),languages:z.array(z.object({language:str.optional().default(''),level:z.enum(['','ネイティブレベル','ネイティブに近いレベル','ビジネスレベル','日常会話レベル','挨拶レベル']).optional().default(''),qualification:str.optional().default(''),date:str.optional().default('')})).max(40).optional().default([]),uploads:z.array(z.object({name:z.string().max(300),role:z.enum(['source','job','career'])})).max(100).default([]),confirmed:z.boolean().default(false)});
-const parseDoc=(v)=>docSchema.parse(v);
+const parseDoc=(v)=>{const d=docSchema.parse(v);if(d.type==='rirekisho')d.preferences=normalizePreferences(d.preferences);return d;};
 app.get('/api/documents',(req,res)=>res.json(db.prepare('SELECT id,payload,updated FROM documents ORDER BY updated DESC').all().map(r=>({id:r.id,updated:r.updated,...JSON.parse(r.payload)}))));
 app.post('/api/documents',(req,res)=>{const d=parseDoc(req.body);const id=randomUUID();db.prepare('INSERT INTO documents VALUES(?,?,?)').run(id,JSON.stringify(d),new Date().toISOString());res.json({id,...d});});
 app.put('/api/documents/:id',(req,res)=>{const d=parseDoc(req.body);const r=db.prepare('UPDATE documents SET payload=?,updated=? WHERE id=?').run(JSON.stringify(d),new Date().toISOString(),req.params.id);if(!r.changes)return res.sendStatus(404);res.json({ok:true});});

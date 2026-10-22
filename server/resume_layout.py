@@ -159,6 +159,10 @@ def header_layout(d):
     heights=[r['height'] for r in rows];chronology_y=86+main_height+sum(heights)+16
     return fields,{'contactWidth':contact_width,'contactHeights':heights,'contactRows':rows,'kanaHeight':kana_height,'birthHeight':birth_height,'mainHeight':main_height,'headerEnd':86+main_height,'chronologyY':chronology_y,'chronologyHeight':BOTTOM-chronology_y}
 
+def normalized_preferences(value):
+    rest=re.sub(r'貴社の規定に従います[。．.]?', '', str(value or '')).lstrip()
+    return '貴社の規定に従います。'+('\n'+rest if rest else '')
+
 def layout(d):
     fields,header=header_layout(d);widths=[43,28,W-71]
     measured=measured_rows(chronology(d),widths);left=[];right=[];used=0
@@ -174,7 +178,7 @@ def layout(d):
     titles={'motivation':MOTIVATION,'preferences':PREFERENCES}
     heading_heights={k:max(28,len(lines(v,HEADING_SIZE,(W-12)*.96))*HEADING_SIZE*1.35+10) for k,v in titles.items()}
     bodies={}
-    for key,value,minimum in [('motivation','\n\n'.join(filter(None,[d.get('motivation',''),d.get('strengths','')])),40),('preferences',d.get('preferences',''),24)]:
+    for key,value,minimum in [('motivation','\n\n'.join(filter(None,[d.get('motivation',''),d.get('strengths','')])),40),('preferences',normalized_preferences(d.get('preferences','')),24)]:
         wrapped=lines(value,CONTENT_SIZE,(W-12)*.96)
         bodies[key]=max(minimum,len(wrapped)*CONTENT_SIZE*1.5+16)
         fields[key]={**plain(value),'lines':wrapped,'leading':CONTENT_SIZE*1.5,'topPadding':8}
