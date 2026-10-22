@@ -66,8 +66,10 @@ def education_events(rows):
         if explicit:
             extra=[p for p in parts if not event.search(p) and not any(e.startswith(p) for e in explicit)]
             for i,p in enumerate(explicit):out.append({**r,'date':r.get('end','') if i else r.get('date',''),'end':'','name':p,'detail':'' if i else '\n'.join(extra)})
-        elif r.get('end'):
-            out.extend([{**r,'name':name+'　入学','end':'','detail':''},{**r,'date':r['end'],'end':'','name':name+'　卒業','detail':detail}])
+        elif r.get('end') or r.get('completion'):
+            if r.get('date'):out.append({**r,'name':name+'　入学','end':'','detail':'' if r.get('end') else detail})
+            if r.get('end'):out.append({**r,'date':r['end'],'end':'','name':name+'　'+r.get('completion','卒業'),'detail':detail})
+            if not r.get('date') and not r.get('end'):out.append({**r,'name':name,'detail':detail})
         else:out.append({**r,'name':name,'detail':detail})
     return out
 
@@ -154,7 +156,8 @@ def layout(d):
     fields={
       'kana':fit('ふりがな　'+d.get('furigana',''),W-115,25,'ふりがな',9,9),
       'name':fit(d.get('name',''),W-115,52,'氏名',18,12),
-      'birth':fit(birth(d)+'　性別（任意） '+d.get('gender',''),W-115,29,'生年月日・性別',9,9),
+      'birth':fit(birth(d),W-238,29,'生年月日',9,9),
+      'gender':fit('性別（任意） '+d.get('gender',''),116,29,'性別',9,9),
       'address':fit('ふりがな　'+d.get('addressKana','')+'\n現住所　〒'+d.get('postalCode','')+'\n'+d.get('address',''),W-150,48,'現住所',9,9),
       'contact':contact_block(d),
       'alternate':fit('ふりがな　'+d.get('alternateAddressKana','')+'\n連絡先　〒'+d.get('alternatePostalCode','')+'\n'+d.get('alternateAddress',''),W-150,48,'連絡先',9,9),
@@ -198,7 +201,7 @@ def pdf(d,out):
     main=W-100;rule(X,86,main,120);rule(X+main+7,89,85,113)
     text(model['fields']['kana'],X+6,90);c.line(X,PAGE_H-115,X+main,PAGE_H-115)
     label('氏名',X+6,119,8);text(model['fields']['name'],X+6,133);c.line(X,PAGE_H-177,X+main,PAGE_H-177)
-    text(model['fields']['birth'],X+6,181)
+    text(model['fields']['birth'],X+6,181);c.line(X+main-128,PAGE_H-177,X+main-128,PAGE_H-206);text(model['fields']['gender'],X+main-122,181)
     if d.get('photo'):
         image=ImageReader(io.BytesIO(base64.b64decode(d['photo'].split(',',1)[1])))
         c.drawImage(image,X+main+7,PAGE_H-202,width=85,height=113,preserveAspectRatio=True,anchor='c')
@@ -269,7 +272,11 @@ def word(d,out):
         nested(cell,vals,model['widths'],heights)
     first=outer([44,120,48,48,16,446]);write(first[0],[block('履 歴 書',20),block(jpdate(asof(d).isoformat())+' 現在',9)])
     t=nested(first[1],[[block(''),block('')]], [W-100,100],[118]);left,right=t.rows[0].cells
-    write(left,[model['fields']['kana'],block('氏名',8),model['fields']['name'],model['fields']['birth']])
+    write(left,[model['fields']['kana'],block('氏名',8),model['fields']['name']])
+    birth_table=left.add_table(rows=1,cols=2);birth_table.autofit=False;birth_table.style='Table Grid'
+    for col,width in zip(birth_table.columns,[W-228,128]):col.width=Pt(width)
+    fixrow(birth_table.rows[0],29)
+    for cell,key,width in zip(birth_table.rows[0].cells,['birth','gender'],[W-228,128]):cell.width=Pt(width);write(cell,[model['fields'][key]])
     if d.get('photo'):
         right.text='';p=right.paragraphs[0];p.paragraph_format.line_spacing=Pt(114);p.add_run().add_picture(io.BytesIO(base64.b64decode(d['photo'].split(',',1)[1])),width=Mm(30),height=Mm(40))
     else:write(right,[block('写真を貼る位置',8),block('縦40mm × 横30mm',8)])

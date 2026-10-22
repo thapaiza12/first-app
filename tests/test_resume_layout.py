@@ -96,6 +96,23 @@ class ResumeLayoutTests(unittest.TestCase):
         wrapped=lines(value,10.5,180)
         self.assertEqual(''.join(wrapped),value)
         for word in value.split():self.assertTrue(any(word in line for line in wrapped),word)
+    def test_birth_and_gender_use_separate_cells_with_a_clear_gap(self):
+        d=self.sample();d.update(birthDate='2001-02-27',gender='男')
+        m=layout(d);self.assertNotIn('性別',m['fields']['birth']['text']);self.assertIn('男',m['fields']['gender']['text'])
+        with tempfile.TemporaryDirectory() as folder:
+            out=Path(folder)/'birth.pdf';render_document(d,'pdf',str(out))
+            with fitz.open(out) as pdf:
+                spans=[span for block in pdf[0].get_text('dict')['blocks'] if 'lines' in block for line in block['lines'] for span in line['spans']]
+                birthday=next(span for span in spans if '2001年2月27日' in span['text'])
+                gender=next(span for span in spans if '性別' in span['text'])
+                self.assertGreater(gender['bbox'][0]-birthday['bbox'][2],20)
+            out=Path(folder)/'birth.docx';render_document(d,'docx',str(out))
+            with zipfile.ZipFile(out) as archive:
+                root=E.fromstring(archive.read('word/document.xml'));ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+                row=next(row for row in root.findall('.//w:tr',ns) if any('2001年2月27日' in ''.join(t.text or '' for t in cell.findall('w:p/w:r/w:t',ns)) for cell in row.findall('w:tc',ns)) and len(row.findall('w:tc',ns))==2)
+                texts=[''.join(t.text or '' for t in cell.findall('.//w:t',ns)) for cell in row.findall('w:tc',ns)]
+                self.assertTrue(any('2001年' in text and '性別' not in text for text in texts))
+                self.assertTrue(any('性別' in text and '2001年' not in text for text in texts))
     def sample(self):return {'type':'rirekisho','name':'山田 太郎','documentDate':'2026-10-16','education':[{'date':'2013-04','name':'大学 入学'}],'experience':[{'date':'2017-04','end':'2024-03','name':'株式会社テスト'}],'licenses':[],'motivation':'営業経験を活かして貢献します。'}
     def test_each_company_has_enter_and_exit_rows_and_current_employment_is_not_retirement(self):
         events=employment_events([{'name':'A社','date':'2020-04','end':'2024-03'},{'name':'B社','date':'2024-04','current':True}])

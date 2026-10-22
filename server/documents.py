@@ -4,6 +4,7 @@ from xml.etree import ElementTree as ET
 from pathlib import Path
 import fitz
 from PIL import Image, ImageOps, ImageSequence
+from portraits import portrait_candidates
 
 def ocr_image(raw):
     image=ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert('RGB')
@@ -30,7 +31,7 @@ def extract(path, original):
         with zipfile.ZipFile(path) as z:
             if len(z.infolist())>10000 or sum(i.file_size for i in z.infolist())>200*1024*1024:
                 raise ValueError('展開後の書類サイズが大きすぎます。資料を分割してください。')
-    def save_photo(raw):
+    def save_photo(raw,trusted_embedded=False):
         nonlocal missing_parts,unreadable_media
         office=ext in ['.docx','.xlsx','.xlsm','.pptx']
         try:
@@ -40,9 +41,7 @@ def extract(path, original):
                 readable=im.copy();readable.thumbnail((2400,3200))
                 b=io.BytesIO();readable.save(b,format='JPEG',quality=92)
                 pages.append('data:image/jpeg;base64,'+base64.b64encode(b.getvalue()).decode())
-            if w<80 or h<80:return
-            im.thumbnail((900,1200));b=io.BytesIO();im.save(b,format='JPEG',quality=90)
-            photos.append({'data':'data:image/jpeg;base64,'+base64.b64encode(b.getvalue()).decode(),'width':w,'height':h})
+            photos.extend(portrait_candidates(raw,trusted_embedded=trusted_embedded))
         except Exception:
             if office:missing_parts=True;unreadable_media=True
     if ext=='.pdf':
@@ -75,11 +74,18 @@ def extract(path, original):
             text+=page_text+'\n'
             for img in page.get_images(full=True):
                 if img[0] not in seen:
-                    seen.add(img[0]); save_photo(doc.extract_image(img[0])['image'])
+                    seen.add(img[0])
+                    rectangles=page.get_image_rects(img[0])
+                    trusted=any(.55<r.width/max(r.height,1)<.95 and r.x0>page.rect.width*.6 and r.y0<page.rect.height*.3 and r.get_area()/page.rect.get_area()<.1 for r in rectangles)
+                    # A portrait-sized embedded image is safe to reuse. A scan
+                    # must go through face cropping, never the old aspect sort.
+                    save_photo(doc.extract_image(img[0])['image'],trusted_embedded=trusted)
             if len(pages)<8:
                 scale=min(2.5,2400/max(page.rect.width,page.rect.height))
                 pix=page.get_pixmap(matrix=fitz.Matrix(scale,scale),alpha=False)
                 pages.append('data:image/jpeg;base64,'+base64.b64encode(pix.tobytes('jpeg',jpg_quality=90)).decode())
+        if not photos and len(doc):
+            photos.extend(portrait_candidates(doc[0].get_pixmap(matrix=fitz.Matrix(2,2),alpha=False).tobytes('png')))
         text_ready=native_complete and len(text)<=100000
         ocr_ready=not text_ready and all_pages_read and bool(text.strip())
         if not text.strip(): warnings.append('テキストを読み取れませんでした。原本を参照して手入力してください。')
@@ -157,13 +163,14 @@ def extract(path, original):
             for frame in ImageSequence.Iterator(frames):
                 image=ImageOps.exif_transpose(frame.copy()).convert('RGB');image.thumbnail((2400,3200))
                 buffer=io.BytesIO();image.save(buffer,format='JPEG',quality=92);raw=buffer.getvalue()
-                pages.append('data:image/jpeg;base64,'+base64.b64encode(raw).decode());photos=[]
+                pages.append('data:image/jpeg;base64,'+base64.b64encode(raw).decode())
+                if not photos:photos.extend(portrait_candidates(raw))
                 try:
                     value=ocr_image(raw);texts.append(value);ocr_ready=ocr_ready and bool(value.strip())
                 except subprocess.TimeoutExpired:ocr_ready=False;warnings.append('画像読取の処理時間を超えました。Geminiでの確認が必要です。')
                 except ValueError as error:ocr_ready=False;warnings.append(str(error))
             text='\n'.join(texts)
-        warnings.append(('無料OCRで読み取りました。' if text else 'ローカルOCRでは読み取れませんでした。Gemini設定時は画像を送信して読み取れます。')+'原本と照合してください。顔写真はプレビューで切り抜いて再利用できます。')
+        warnings.append(('無料OCRで読み取りました。' if text else 'ローカルOCRでは読み取れませんでした。Gemini設定時は画像を送信して読み取れます。')+'原本と照合してください。顔写真は自動抽出します。検出できない場合は写真を別途追加するか、原本から切り抜けます。')
     else:
         raise ValueError('この形式は直接読取に対応していません。PDF・DOCX・XLSX・PPTX・画像・TXT・CSVに変換してください（旧DOC/XLSは変換が必要です）。')
     if unreadable_media:raise ValueError('資料内に読み取れない画像形式があります。内容は省略せず停止しました。元のアプリからPDFとして保存したファイルを使用してください。')
@@ -180,7 +187,7 @@ def extract(path, original):
         text_ready=bool(text.strip()) and not pages and not missing_parts
     if len(text)>100000:raise ValueError('資料が100,000文字を超えています。読取内容は省略していません。')
     ocr_ready=ocr_ready and not missing_parts
-    photos.sort(key=lambda p: (0 if .55<p['width']/p['height']<.95 else 1,-p['width']*p['height']))
+    photos=list({p['data']:p for p in photos}.values())
     return {'text':text, 'photos':photos[:10], 'pages':pages,'warnings':warnings,'textReady':text_ready,'ocrTextReady':ocr_ready,'pageCount':page_count}
 
 def sections(d):
@@ -198,6 +205,7 @@ if __name__=='__main__':
         if sys.argv[1]=='check':
             from resume_layout import layout
             layout(json.load(sys.stdin));print(json.dumps({'pages':2,'fits':True}))
+        elif sys.argv[1]=='portrait':print(json.dumps({'photos':portrait_candidates(Path(sys.argv[2]).read_bytes())}))
         elif sys.argv[1]=='extract': print(json.dumps(extract(sys.argv[2],sys.argv[3]),ensure_ascii=False))
         else:
             export(json.load(sys.stdin),sys.argv[2],sys.argv[3]); print(json.dumps({'ok':True}))

@@ -13,3 +13,5 @@ nav button{font-size:14px;color:#111}nav button.active{color:#111}.breadcrumb,.b
 .resume-pages>.mhlw-paper:last-child>.mhlw-box:nth-last-child(2){flex-grow:1}
 .resume-pages>.mhlw-paper:last-child>.mhlw-box>p{flex:1;overflow-wrap:break-word;word-break:normal}
 .resume-pages>.mhlw-paper:last-child>.paper-page-number{margin-top:auto;padding-top:12px}
+
+.paper-birth{gap:16px;align-items:center}.paper-birth>span:first-child{flex:1}.paper-birth>span:last-child{padding-left:10px;border-left:1px solid #858c7b;white-space:nowrap}.photo-drop-surface{min-height:180px}
