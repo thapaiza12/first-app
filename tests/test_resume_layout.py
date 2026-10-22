@@ -34,7 +34,7 @@ class ResumeLayoutTests(unittest.TestCase):
             p=Path(folder)/'contact.pdf';render_document(d,'pdf',str(p))
             with fitz.open(p) as pdf:
                 text=''.join(page.get_text() for page in pdf)
-                self.assertNotIn('各別にまとめて書く',text)
+                self.assertEqual(text.count('各別にまとめて書く'),2)
                 self.assertIn('Email: long.applicant.address@example.com',text)
                 endings=[span for page in pdf for block in page.get_text('dict')['blocks'] if 'lines' in block for line in block['lines'] for span in line['spans'] if span['text']=='以上']
                 self.assertGreater(endings[0]['bbox'][0],500)
@@ -47,6 +47,38 @@ class ResumeLayoutTests(unittest.TestCase):
                         self.assertEqual(paragraph.find('w:pPr/w:jc',ns).get('{'+ns['w']+'}val'),'center')
                         self.assertIsNotNone(paragraph.find('w:r/w:rPr/w:b',ns))
                     if value=='以上':self.assertEqual(paragraph.find('w:pPr/w:jc',ns).get('{'+ns['w']+'}val'),'right')
+    def test_unused_rows_are_reclaimed_for_long_motivation_without_losing_text(self):
+        d=self.sample();d['motivation']='応募者として実際の経験を活かして貢献します。'*60+'最後まで保持する文章です。'
+        d['preferences']='貴社の規定に従います。'
+        original=copy.deepcopy(d);m=layout(d)
+        self.assertGreater(m['page2']['motivation'],214)
+        self.assertLess(m['page2']['qualifications'],140)
+        self.assertLess(m['page2']['preferences'],170)
+        self.assertLessEqual(sum(m['page2'].values())+36,716)
+        with tempfile.TemporaryDirectory() as folder:
+            pdf=Path(folder)/'long.pdf';render_document(d,'pdf',str(pdf))
+            with fitz.open(pdf) as pages:
+                self.assertEqual(len(pages),2)
+                text=''.join(page.get_text() for page in pages).replace('\n','')
+                self.assertIn(d['motivation'],text)
+                for page in pages:
+                    for word in page.get_text('words'):self.assertLessEqual(word[3],page.rect.height)
+            word=Path(folder)/'long.docx';render_document(d,'docx',str(word))
+            with zipfile.ZipFile(word) as archive:
+                xml=E.fromstring(archive.read('word/document.xml'));ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+                text=''.join(t.text or '' for t in xml.findall('.//w:t',ns))
+                self.assertIn(d['motivation'],text)
+                self.assertEqual(len(xml.findall('.//w:br[@w:type="page"]',ns)),1)
+        self.assertEqual(d,original)
+    def test_history_and_qualifications_can_borrow_unused_page_two_space(self):
+        for key,value in [('experience',[{'name':'会社'+str(i),'date':'2010-04','end':'2020-03'} for i in range(15)]),('licenses',[{'name':'資格'+str(i),'date':'2020-01'} for i in range(14)])]:
+            d=self.sample();d[key]=value;m=layout(d)
+            self.assertLessEqual(sum(m['page2'].values())+36,716)
+            with tempfile.TemporaryDirectory() as folder:
+                out=Path(folder)/'expanded.pdf';render_document(d,'pdf',str(out))
+                with fitz.open(out) as pages:
+                    self.assertEqual(len(pages),2)
+                    self.assertIn('会社14' if key=='experience' else '資格13',''.join(p.get_text() for p in pages))
     def sample(self):return {'type':'rirekisho','name':'山田 太郎','documentDate':'2026-10-16','education':[{'date':'2013-04','name':'大学 入学'}],'experience':[{'date':'2017-04','end':'2024-03','name':'株式会社テスト'}],'licenses':[],'motivation':'営業経験を活かして貢献します。'}
     def test_each_company_has_enter_and_exit_rows_and_current_employment_is_not_retirement(self):
         events=employment_events([{'name':'A社','date':'2020-04','end':'2024-03'},{'name':'B社','date':'2024-04','current':True}])

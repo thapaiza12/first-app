@@ -96,22 +96,28 @@ def pad_rows(rows,height,size,widths):
 
 def tables(d):
     widths=[43,28,W-71];all_rows=chronology(d)
+    qualification=[]
+    for r in d.get('licenses',[]):
+        date=r.get('date','').split('-');qualification.append([date[0] if date else '',date[1] if len(date)>1 else '',r.get('name','')])
+    motivation='\n\n'.join(filter(None,[d.get('motivation',''),d.get('strengths','')]))
     for size in [10.5,10,9.5,9]:
         measured=measured_rows(all_rows,size,widths);left=[];right=[];used=0
         for r in measured:
             if not right and used+r['height']<=422:left.append(r);used+=r['height']
             else:right.append(r)
-        if sum(r['height'] for r in right)<=134:
-            jobs=[pad_rows(left,422,size,widths),pad_rows(right,134,size,widths)];break
-    else:raise ValueError('履歴書を2ページに収められません。「学歴・職歴」の件数や長い学校名・会社名を整理してください。職務の詳しい説明は職務経歴書に記入してください。')
-    qualification=[]
-    for r in d.get('licenses',[]):
-        date=r.get('date','').split('-');qualification.append([date[0] if date else '',date[1] if len(date)>1 else '',r.get('name','')])
-    for qsize in [10.5,10,9.5,9]:
-        qrows=measured_rows(qualification,qsize,widths)
-        if sum(r['height'] for r in qrows)<=116:qrows=pad_rows(qrows,116,qsize,widths);break
-    else:raise ValueError('履歴書を2ページに収められません。「免許・資格」の件数や長い資格名を整理してください。')
-    return widths,jobs,qrows
+        # Page two shares one budget. Empty table rows and empty text areas do not
+        # reserve space that another section needs. Content is never truncated.
+        qrows=measured_rows(qualification,size,widths)
+        right=right or pad_rows([],20,size,widths)
+        qrows=qrows or pad_rows([],20,size,widths)
+        bodies={}
+        for key,value,minimum in [('motivation',motivation,40),('preferences',d.get('preferences',''),20)]:
+            wrapped=lines(value,size,(W-12)*.91)
+            bodies[key]=max(minimum,len(wrapped)*size*1.35+12)
+        heights={'chronology':22+sum(r['height'] for r in right)+2,'qualifications':22+sum(r['height'] for r in qrows)+2,'motivation':22+bodies['motivation'],'preferences':30+bodies['preferences']}
+        if sum(heights.values())+36<=716:
+            return widths,[pad_rows(left,422,size,widths),right],qrows,{'heights':heights,'bodies':bodies,'size':size}
+    raise ValueError('空白行・空欄の余白・文字サイズを自動調整しましたが、全内容を読みやすい2ページに収められません。入力内容は保存されています。詳しい職務内容は職務経歴書へ移してください。')
 
 def contact_block(d):
     values=['Phone: '+d.get('phone',''),'Email: '+d.get('email','')]
@@ -122,7 +128,7 @@ def contact_block(d):
     return {'text':'\n'.join(values),'lines':values,'size':size,'leading':size*1.5}
 
 def layout(d):
-    init_font();widths,jobs,quals=tables(d)
+    init_font();widths,jobs,quals,plan=tables(d)
     # Every value is measured before either format is written.
     fields={
       'kana':fit('ふりがな　'+d.get('furigana',''),W-115,25,'ふりがな',9,9),
@@ -132,10 +138,10 @@ def layout(d):
       'contact':contact_block(d),
       'alternate':fit('ふりがな　'+d.get('alternateAddressKana','')+'\n連絡先　〒'+d.get('alternatePostalCode','')+'\n'+d.get('alternateAddress',''),W-150,48,'連絡先',9,9),
       'alternatePhone':fit('Phone: '+d.get('alternatePhone','')+'\n（現住所以外に連絡を希望する場合のみ記入）',138,48,'連絡先電話',8,8),
-      'motivation':fit('\n\n'.join(filter(None,[d.get('motivation',''),d.get('strengths','')])),W-12,188,'志望の動機・特技・自己PR'),
-      'preferences':fit(d.get('preferences',''),W-12,136,'本人希望記入欄'),
+      'motivation':fit('\n\n'.join(filter(None,[d.get('motivation',''),d.get('strengths','')])),W-12,plan['bodies']['motivation'],'志望の動機・特技・自己PR',plan['size'],plan['size']),
+      'preferences':fit(d.get('preferences',''),W-12,plan['bodies']['preferences'],'本人希望記入欄',plan['size'],plan['size']),
     }
-    return {'pages':2,'widths':widths,'jobs':jobs,'qualifications':quals,'fields':fields}
+    return {'pages':2,'widths':widths,'jobs':jobs,'qualifications':quals,'fields':fields,'page2':plan['heights']}
 
 def pdf(d,out):
     from reportlab.pdfgen import canvas
@@ -177,11 +183,14 @@ def pdf(d,out):
     for y,left,right in [(206,'address','contact'),(254,'alternate','alternatePhone')]:
         rule(X,y,W,48);c.line(X+W-144,PAGE_H-y,X+W-144,PAGE_H-y-48)
         text(model['fields'][left],X+6,y+3);text(model['fields'][right],X+W-138,y+3)
-    grid(model['jobs'][0],X,318,model['widths'],'',446);header_footer(1);c.showPage()
-    grid(model['jobs'][1],X,42,model['widths'],'',158);grid(model['qualifications'],X,212,model['widths'],'免許・資格',140)
-    for y,h,key,heading,labelh in [(366,214,'motivation',MOTIVATION,22),(594,170,'preferences',PREFERENCES,30)]:
-        rule(X,y,W,h);c.line(X,PAGE_H-y-labelh,X+W,PAGE_H-y-labelh)
+    grid(model['jobs'][0],X,318,model['widths'],TITLE,446);header_footer(1);c.showPage()
+    heights=model['page2'];y=42
+    grid(model['jobs'][1],X,y,model['widths'],TITLE,heights['chronology']);y+=heights['chronology']+12
+    grid(model['qualifications'],X,y,model['widths'],'免許・資格',heights['qualifications']);y+=heights['qualifications']+12
+    for key,heading,labelh in [('motivation',MOTIVATION,22),('preferences',PREFERENCES,30)]:
+        h=heights[key];rule(X,y,W,h);c.line(X,PAGE_H-y-labelh,X+W,PAGE_H-y-labelh)
         heading_block=fit(heading,W-12,labelh,heading,8,8);text(heading_block,X+6,y+3);text(model['fields'][key],X+6,y+labelh+4)
+        y+=h+12
     header_footer(2);c.showPage();c.save()
     import fitz
     check=fitz.open(out)
@@ -242,10 +251,12 @@ def word(d,out):
         right.text='';p=right.paragraphs[0];p.paragraph_format.line_spacing=Pt(114);p.add_run().add_picture(io.BytesIO(base64.b64decode(d['photo'].split(',',1)[1])),width=Mm(30),height=Mm(40))
     else:write(right,[block('写真を貼る位置',8),block('縦40mm × 横30mm',8)])
     for cell,l,r in [(first[2],'address','contact'),(first[3],'alternate','alternatePhone')]:nested(cell,[[model['fields'][l],model['fields'][r]]],[W-144,144],[46])
-    chronology_cell(first[5],model['jobs'][0],'')
+    chronology_cell(first[5],model['jobs'][0],TITLE)
     paragraph=doc.add_paragraph();paragraph.paragraph_format.line_spacing=Pt(1);paragraph.add_run().add_break(WD_BREAK.PAGE)
-    second=outer([158,12,140,14,214,14,170]);chronology_cell(second[0],model['jobs'][1],'');chronology_cell(second[2],model['qualifications'],'免許・資格')
-    for cell,key,label,labelh,bodyh in [(second[4],'motivation',MOTIVATION,22,190),(second[6],'preferences',PREFERENCES,30,138)]:
-        labelblock=fit(label,W-12,labelh,label,8,8);nested(cell,[[labelblock],[model['fields'][key]]],[W],[labelh,bodyh])
+    heights=model['page2']
+    second=outer([heights['chronology'],12,heights['qualifications'],12,heights['motivation'],12,heights['preferences']])
+    chronology_cell(second[0],model['jobs'][1],TITLE);chronology_cell(second[2],model['qualifications'],'免許・資格')
+    for cell,key,label,labelh in [(second[4],'motivation',MOTIVATION,22),(second[6],'preferences',PREFERENCES,30)]:
+        labelblock=fit(label,W-12,labelh,label,8,8);nested(cell,[[labelblock],[model['fields'][key]]],[W],[labelh,heights[key]-labelh-2])
     doc.add_paragraph().paragraph_format.line_spacing=Pt(1)
     doc.save(out)
