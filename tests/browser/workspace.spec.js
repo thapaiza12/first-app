@@ -6,7 +6,7 @@ test('local review and writing UI with mocked helper responses preserve unselect
 test('Gemini configuration displays provider disclosure and sends uploads for review',async({page})=>{await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true,loginRequired:false,mode:'development'}}));let called=false;await page.route('**/api/assist',r=>{called=true;return r.fulfill({json:{data:{name:'Gemini読取テスト'},warnings:['原本と照合してください。'],mode:'gemini'}});});await page.goto('/');await expect(page.locator('.local-notice')).toContainText('Gemini設定済み');await expect(page.getByText('アップロード後、資料のテキスト・先頭8ページの画像をGeminiへ送信して読み取ります。')).toBeVisible();await page.locator('.editor-content input[type=file]').first().setInputFiles({name:'resume.txt',mimeType:'text/plain',buffer:Buffer.from('氏名：テスト')});await expect(page.getByRole('dialog')).toContainText('Gemini読取テスト');expect(called).toBe(true);await page.getByRole('button',{name:'選択した項目を反映'}).click();await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('Gemini読取テスト');});
 test('desktop settings open native key settings and can deliberately stop the app',async({page})=>{await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'local',geminiConfigured:false,desktopMode:true,loginRequired:false,mode:'development'}}));let keySettings=0,stopped=0;await page.route('**/api/desktop/settings',r=>{keySettings++;return r.fulfill({json:{ok:true}});});await page.route('**/api/desktop/stop',r=>{stopped++;return r.fulfill({json:{ok:true}});});await page.goto('/');await page.locator('.save-status button').click();await page.getByRole('button',{name:'Geminiキーを設定'}).click();await expect(page.getByText('MacのGemini設定ウィンドウを開きます。')).toBeVisible();expect(keySettings).toBe(1);await page.locator('.save-status button').click();page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'アプリを停止',exact:true}).click();await expect(page.getByText('アプリを停止しました。次回はMacのM&A Groupアイコンから開いてください。')).toBeVisible();expect(stopped).toBe(1);});
 test('résumé preview has two sheets and career document uses its own layout',async({page})=>{await page.goto('/');await expect(page.locator('.paper-stage .mhlw-paper')).toHaveCount(2);await expect(page.locator('.paper-stage')).toContainText('性別（任意）');await expect(page.locator('.paper-stage')).toContainText('連絡先');await page.getByRole('button',{name:'職務経歴書',exact:true}).click();await page.getByRole('button',{name:'切り替える',exact:true}).click();await expect(page.locator('.paper-stage .career-paper')).toHaveCount(1);await expect(page.locator('.paper-stage .paper-photo')).toHaveCount(0);await expect(page.locator('.paper-stage')).toContainText('職務要約');await expect(page.locator('.paper-stage')).toContainText('自己PR');await expect(page.getByLabel('生年月日')).toHaveCount(0);await page.getByRole('button',{name:'3 職務経歴',exact:true}).click();await page.getByRole('button',{name:'もうひとつ勤務先追加'}).click();await page.getByLabel('会社名・部署・職種').fill('株式会社キャリア');await page.getByLabel('事業内容',{exact:true}).fill('法人向けサービス');await page.getByLabel('雇用形態',{exact:true}).fill('正社員');await expect(page.locator('.paper-stage')).toContainText('株式会社キャリア');await expect(page.locator('.paper-stage')).toContainText('法人向けサービス');});
-test('career has six editable sections, larger black fields, qualifications and language levels',async({page})=>{await page.goto('/');await expect(page).toHaveTitle('M&A CV creation');await page.getByRole('button',{name:'職務経歴書',exact:true}).click();await page.getByRole('button',{name:'切り替える',exact:true}).click();await expect(page.getByLabel('職務要約',{exact:true})).toBeVisible();await page.getByLabel('職務要約',{exact:true}).fill('法人営業を担当しました。');await page.getByLabel('氏名',{exact:true}).fill('山田 太郎');await page.getByLabel('記入日',{exact:true}).fill('2026-10-16');const styles=await page.getByLabel('氏名',{exact:true}).evaluate(el=>({size:parseFloat(getComputedStyle(el).fontSize),color:getComputedStyle(el).color}));expect(styles.size).toBeGreaterThanOrEqual(16);expect(styles.color).toBe('rgb(17, 17, 17)');await page.getByRole('button',{name:'5 資格・語学力',exact:true}).click();await page.getByRole('button',{name:'もうひとつ追加',exact:true}).click();await page.getByLabel('資格名',{exact:true}).fill('普通自動車運転免許');await page.getByLabel('取得年月',{exact:true}).fill('2018-03');await page.getByRole('button',{name:'語学力をもうひとつ追加'}).click();await page.getByLabel('言語',{exact:true}).fill('日本語');const levels=['ネイティブレベル','ネイティブに近いレベル','ビジネスレベル','日常会話レベル','挨拶レベル'];for(const level of levels)await expect(page.getByRole('option',{name:level,exact:true})).toHaveCount(1);await page.getByLabel('レベル',{exact:true}).selectOption('ビジネスレベル');await page.getByLabel('語学資格',{exact:true}).fill('日本語能力試験 N1');await page.getByLabel('語学資格 取得年月',{exact:true}).fill('2022-07');await expect(page.locator('.paper-stage')).toContainText('日本語能力試験 N1');await expect(page.locator('.paper-stage')).toContainText('6. 自己PR・志望動機');await expect(page.locator('.paper-stage .career-section>h3').first()).toHaveCSS('border-bottom-width','0px');await expect(page.locator('.save-status')).toContainText('保存済み');await page.getByRole('button',{name:/下書き/}).click();await page.getByRole('button',{name:'編集を続ける'}).first().click();await page.getByRole('button',{name:'5 資格・語学力',exact:true}).click();await expect(page.getByLabel('言語',{exact:true})).toHaveValue('日本語');});
+test('career has six editable sections, larger black fields, qualifications and language levels',async({page})=>{await page.goto('/');await expect(page).toHaveTitle('M&A Group CV');await page.getByRole('button',{name:'職務経歴書',exact:true}).click();await page.getByRole('button',{name:'切り替える',exact:true}).click();await expect(page.getByLabel('職務要約',{exact:true})).toBeVisible();await page.getByLabel('職務要約',{exact:true}).fill('法人営業を担当しました。');await page.getByLabel('氏名',{exact:true}).fill('山田 太郎');await page.getByLabel('記入日',{exact:true}).fill('2026-10-16');const styles=await page.getByLabel('氏名',{exact:true}).evaluate(el=>({size:parseFloat(getComputedStyle(el).fontSize),color:getComputedStyle(el).color}));expect(styles.size).toBeGreaterThanOrEqual(16);expect(styles.color).toBe('rgb(17, 17, 17)');await page.getByRole('button',{name:'5 資格・語学力',exact:true}).click();await page.getByRole('button',{name:'もうひとつ追加',exact:true}).click();await page.getByLabel('資格名',{exact:true}).fill('普通自動車運転免許');await page.getByLabel('取得年月',{exact:true}).fill('2018-03');await page.getByRole('button',{name:'語学力をもうひとつ追加'}).click();await page.getByLabel('言語',{exact:true}).fill('日本語');const levels=['ネイティブレベル','ネイティブに近いレベル','ビジネスレベル','日常会話レベル','挨拶レベル'];for(const level of levels)await expect(page.getByRole('option',{name:level,exact:true})).toHaveCount(1);await page.getByLabel('レベル',{exact:true}).selectOption('ビジネスレベル');await page.getByLabel('語学資格',{exact:true}).fill('日本語能力試験 N1');await page.getByLabel('語学資格 取得年月',{exact:true}).fill('2022-07');await expect(page.locator('.paper-stage')).toContainText('日本語能力試験 N1');await expect(page.locator('.paper-stage')).toContainText('6. 自己PR・志望動機');await expect(page.locator('.paper-stage .career-section>h3').first()).toHaveCSS('border-bottom-width','0px');await expect(page.locator('.save-status')).toContainText('保存済み');await page.getByRole('button',{name:/下書き/}).click();await page.getByRole('button',{name:'編集を続ける'}).first().click();await page.getByRole('button',{name:'5 資格・語学力',exact:true}).click();await expect(page.getByLabel('言語',{exact:true})).toHaveValue('日本語');});
 test('failed Gemini import preserves existing fields and retries the same upload before filling all sections',async({page})=>{
  await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true,loginRequired:false,mode:'development'}}));
  let calls=0;await page.route('**/api/assist',r=>{calls++;return calls===1?r.fulfill({status:502,json:{mode:'gemini-error',code:'INVALID_API_KEY',error:'Geminiキーが無効です。設定してください。'}}):r.fulfill({json:{mode:'gemini',warnings:[],data:{name:'山田 太郎',address:'東京都千代田区1-1',phone:'090-1234-5678',education:[{date:'2015-04',name:'テスト大学 入学'}],experience:[{date:'2019-04',end:'2024-03',name:'株式会社サンプル'}],licenses:[{date:'2018-06',name:'テスト資格'}]}}});});
@@ -167,13 +167,58 @@ test('CV pages are not selected as photos and dragging a photo anywhere in the d
  await expect(page.getByRole('button',{name:'この写真を使用'})).toBeEnabled();
 });
 
-test('resume preview keeps headings at the 13-to-12 size ratio and the name larger',async({page})=>{
+test('resume preview keeps headings at the 13-to-11.5 size ratio and the name larger',async({page})=>{
  await page.goto('/');await page.getByLabel('氏名',{exact:true}).fill('山田 太郎');
  await page.getByRole('button',{name:'5 志望動機・特技',exact:true}).click();
  await page.getByLabel('志望の動機',{exact:true}).fill('私は今、農業の仕事をしています。パン作りに挑戦したいです。');
- const paper=page.locator('.paper-stage .resume-pages');await expect(paper).toHaveAttribute('data-heading-font-pt','13');await expect(paper).toHaveAttribute('data-content-font-pt','12');
+ const paper=page.locator('.paper-stage .resume-pages');await expect(paper).toHaveAttribute('data-heading-font-pt','13');await expect(paper).toHaveAttribute('data-content-font-pt','11.5');
  const heading=await paper.locator('.mhlw-box h4').first().evaluate(el=>parseFloat(getComputedStyle(el).fontSize));
  const content=await paper.locator('.mhlw-box>p').first().evaluate(el=>parseFloat(getComputedStyle(el).fontSize));
- expect(heading/content).toBeCloseTo(13/12,2);
+ expect(heading/content).toBeCloseTo(13/11.5,2);
  expect(await paper.locator('.paper-name strong').evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThan(content);
+});
+
+test('friendly app name and Undo/Redo support text, keyboard shortcuts, and checkboxes',async({page})=>{
+ await page.goto('http://localhost:3099/ma-group-cv');await expect(page).toHaveTitle('M&A Group CV');
+ const undo=page.getByRole('button',{name:'Undo（元に戻す）',exact:true}),redo=page.getByRole('button',{name:'Redo（やり直す）',exact:true});
+ await expect(undo).toBeDisabled();await expect(redo).toBeDisabled();
+ await page.getByLabel('氏名',{exact:true}).fill('元の氏名');await page.getByLabel('メールアドレス').focus();
+ await page.getByLabel('氏名',{exact:true}).fill('変更後の氏名');
+ await undo.click();await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('元の氏名');
+ await redo.click();await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('変更後の氏名');
+ await page.getByLabel('氏名',{exact:true}).focus();await page.keyboard.press('Meta+z');await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('元の氏名');
+ await page.keyboard.press('Meta+Shift+z');await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('変更後の氏名');
+ await page.getByRole('button',{name:'7 確認・出力',exact:true}).click();
+ const check=page.getByLabel('内容を原本と照合し、出力する書類を確認しました。');await check.check();await undo.click();await expect(check).not.toBeChecked();await redo.click();await expect(check).toBeChecked();
+ await expect(page.locator('.document-toolbar')).toHaveCSS('position','sticky');
+ await expect(page.locator('.save-status')).toContainText('保存済み');
+ await page.reload();await page.getByRole('button',{name:/下書き/}).click();await page.getByRole('button',{name:'編集を続ける'}).first().click();
+ await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('変更後の氏名');await expect(undo).toBeDisabled();
+});
+test('applied AI edits undo atomically and new applicants have isolated history',async({page})=>{
+ await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true}}));
+ await page.route('**/api/assist',r=>r.fulfill({json:{mode:'gemini',data:{motivation:'作成した志望動機',strengths:'作成した自己PR'},warnings:[]}}));
+ await page.goto('/');await page.getByLabel('氏名',{exact:true}).fill('応募者A');
+ await page.getByRole('button',{name:'5 志望動機・特技',exact:true}).click();
+ await page.getByLabel('志望の動機',{exact:true}).fill('元の志望動機');
+ await page.getByLabel('補足メモ（自由入力）').first().fill('求人情報');
+ await page.getByRole('button',{name:/資料をもとに志望動機/}).click();await page.getByRole('button',{name:'選択した項目を反映'}).click();
+ await expect(page.getByLabel('志望の動機',{exact:true})).toHaveValue('作成した志望動機');
+ await page.getByRole('button',{name:'Undo（元に戻す）',exact:true}).click();await expect(page.getByLabel('志望の動機',{exact:true})).toHaveValue('元の志望動機');
+ await page.getByRole('button',{name:'新しい書類',exact:true}).click();
+ await page.getByRole('dialog').getByRole('button').filter({hasText:'履歴書'}).click();
+ await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('');await expect(page.getByRole('button',{name:'Undo（元に戻す）',exact:true})).toBeDisabled();
+});
+
+test('undo during an in-flight automatic save persists the restored content',async({page})=>{
+ await page.goto('/');await page.getByLabel('氏名',{exact:true}).fill('保存する元の氏名');await expect(page.locator('.save-status')).toContainText('保存済み');
+ let release,started;const blocked=new Promise(r=>release=r),called=new Promise(r=>started=r);let documentId;
+ await page.route('**/api/documents/*',async route=>{
+  if(route.request().method()==='PUT'&&route.request().postDataJSON().name==='変更中の氏名'&&!documentId){documentId=route.request().url().split('/').at(-1);started();await blocked;}
+  await route.continue();
+ });
+ await page.getByLabel('メールアドレス').focus();await page.getByLabel('氏名',{exact:true}).fill('変更中の氏名');await called;
+ await page.getByRole('button',{name:'Undo（元に戻す）',exact:true}).click();await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('保存する元の氏名');
+ await page.waitForTimeout(800);release();await expect(page.locator('.save-status')).toContainText('保存済み');
+ const documents=await page.request.get('/api/documents').then(r=>r.json());expect(documents.find(d=>d.id===documentId).name).toBe('保存する元の氏名');
 });

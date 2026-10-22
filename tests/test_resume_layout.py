@@ -114,9 +114,9 @@ class ResumeLayoutTests(unittest.TestCase):
                 texts=[''.join(t.text or '' for t in cell.findall('.//w:t',ns)) for cell in row.findall('w:tc',ns)]
                 self.assertTrue(any('2001年' in text and '性別' not in text for text in texts))
                 self.assertTrue(any('性別' in text and '2001年' not in text for text in texts))
-    def test_requested_13pt_headings_and_12pt_content_in_pdf_and_word(self):
+    def test_requested_13pt_headings_and_11_5pt_content_in_pdf_and_word(self):
         d=self.sample();d.update(furigana='やまだ たろう',phone='090-1234-5678',email='long.applicant.address@example.com',birthDate='2001-02-27',gender='男',address='東京都千代田区丸の内1-2-3',preferences='貴社の規定に従います',motivation='私は今、農業の仕事をしています。食材を大切にする経験をしました。次は、食料品製造業でパン作りの仕事に挑戦したいです。Boulangerie EMUで真面目に一生懸命働き、日本の素晴らしいパン作りや仕事の進め方を学びたいです。一日も早く仕事を覚えて貴社に貢献し、将来は日本で学んだ知識や技術を母国のネパールでも活かしたいと考えています。どうぞよろしくお願いします。')
-        m=layout(d);self.assertEqual(m['fonts'],{'heading':13,'content':12});self.assertEqual(m['fields']['motivation']['size'],12)
+        m=layout(d);self.assertEqual(m['fonts'],{'heading':13,'content':11.5});self.assertEqual(m['fields']['motivation']['size'],11.5)
         with tempfile.TemporaryDirectory() as folder:
             out=Path(folder)/'fonts.pdf';render_document(d,'pdf',str(out))
             with fitz.open(out) as pdf:
@@ -124,7 +124,7 @@ class ResumeLayoutTests(unittest.TestCase):
                 spans=[span for page in pdf for block in page.get_text('dict')['blocks'] if 'lines' in block for line in block['lines'] for span in line['spans'] if span['text'].strip()]
                 for span in spans:
                     if d['name'] in span['text']:self.assertEqual(round(span['size'],2),18)
-                    else:self.assertIn(round(span['size'],2),[12,13],span['text'])
+                    else:self.assertIn(round(span['size'],2),[11.5,13],span['text'])
                 heading=next(span for span in spans if '志望の動機' in span['text']);self.assertEqual(heading['size'],13)
                 text=''.join(page.get_text() for page in pdf).replace('\n','');self.assertIn(d['motivation'],text)
             out=Path(folder)/'fonts.docx';render_document(d,'docx',str(out))
@@ -134,22 +134,22 @@ class ResumeLayoutTests(unittest.TestCase):
                     value=''.join(t.text or '' for t in run.findall('w:t',ns))
                     if not value.strip():continue
                     size=int(run.find('w:rPr/w:sz',ns).get('{'+ns['w']+'}val'))
-                    self.assertIn(size,[24,26,36],value)
+                    self.assertIn(size,[23,26,36],value)
                     if '志望の動機' in value:self.assertEqual(size,26)
-                    if '私は今' in value:self.assertEqual(size,24)
+                    if '私は今' in value:self.assertEqual(size,23)
     def test_fixed_sizes_are_never_silently_shrunk_to_hide_overflow(self):
         d=self.sample();d['motivation']='応募者として実際の経験を活かして貢献します。'*60;before=copy.deepcopy(d)
         with tempfile.TemporaryDirectory() as folder:
             for fmt in ['pdf','docx']:
                 out=Path(folder)/('fixed.'+fmt)
-                with self.assertRaisesRegex(ValueError,'13pt・本文12pt'):render_document(d,fmt,str(out))
+                with self.assertRaisesRegex(ValueError,'13pt・本文11.5pt'):render_document(d,fmt,str(out))
                 self.assertFalse(out.exists())
         self.assertEqual(d,before)
     def test_long_contact_and_kana_expand_layout_without_reducing_font_sizes(self):
         d=self.sample();d.update(furigana='やまだたろう'*8,email='very.long.applicant.address.department@example-company.co.jp')
         m=layout(d);self.assertGreater(m['header']['mainHeight'],120);self.assertEqual(m['header']['contactWidth'],511.28)
         self.assertEqual(len(m['fields']['contact']['lines']),2)
-        self.assertTrue(all(run['size'] in [12,13] for row in m['fields']['contact']['runs'] for run in row))
+        self.assertTrue(all(run['size'] in [11.5,13] for row in m['fields']['contact']['runs'] for run in row))
         with tempfile.TemporaryDirectory() as folder:
             for fmt in ['pdf','docx']:render_document(d,fmt,str(Path(folder)/('long-contact.'+fmt)))
     def sample(self):return {'type':'rirekisho','name':'山田 太郎','documentDate':'2026-10-16','education':[{'date':'2013-04','name':'大学 入学'}],'experience':[{'date':'2017-04','end':'2024-03','name':'株式会社テスト'}],'licenses':[],'motivation':'営業経験を活かして貢献します。'}

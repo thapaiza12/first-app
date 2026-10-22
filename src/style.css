@@ -16,9 +16,9 @@ nav button{font-size:14px;color:#111}nav button.active{color:#111}.breadcrumb,.b
 
 .paper-birth{gap:16px;align-items:center}.paper-birth>span:first-child{flex:1}.paper-birth>span:last-child{padding-left:10px;border-left:1px solid #858c7b;white-space:nowrap}.photo-drop-surface{min-height:180px}
 
-/* Document preview scales the physical 13 pt / 12 pt typography together. */
-.resume-pages{--resume-content-size:6.45px;--resume-heading-size:6.9875px}
-.large-preview .resume-pages{--resume-content-size:10.2px;--resume-heading-size:11.05px}
+/* Document preview scales the physical 13 pt / 11.5 pt typography together. */
+.resume-pages{--resume-content-size:6.18125px;--resume-heading-size:6.9875px}
+.large-preview .resume-pages{--resume-content-size:9.775px;--resume-heading-size:11.05px}
 .resume-pages .mhlw-paper,.resume-pages .mhlw-row,.resume-pages .mhlw-row p,.resume-pages .mhlw-row small,.resume-pages .mhlw-box>p,.resume-pages .mhlw-address>div>*,.resume-pages .paper-birth,.resume-pages .paper-title>span,.resume-pages .paper-page-number,.resume-pages .paper-photo small{font-size:var(--resume-content-size)!important;line-height:1.5}
 .resume-pages .mhlw-box h4,.resume-pages .mhlw-table-heading>span,.resume-pages .mhlw-category>div,.resume-pages .resume-label,.resume-pages .paper-kana>span,.resume-pages .paper-name>span,.resume-pages .paper-title h2,.resume-pages .paper-photo>span{font-size:var(--resume-heading-size)!important;font-weight:500;line-height:1.35}
 .resume-pages .mhlw-category>div{font-weight:600}
@@ -27,3 +27,9 @@ nav button{font-size:14px;color:#111}nav button.active{color:#111}.breadcrumb,.b
 .resume-contact-line{display:block;overflow-wrap:anywhere}
 .resume-contact-line>span{font-size:var(--resume-content-size)}
 .resume-pages .paper-kana{font-size:var(--resume-content-size)!important}
+
+.document-toolbar{position:sticky;top:0;z-index:25;background:#fff;flex-wrap:wrap;padding-top:8px;box-shadow:0 3px 8px #233b2808}
+.history-actions{display:flex;gap:8px;align-items:center;padding-bottom:10px}
+.history-actions .btn{min-height:38px;font-size:14px;padding:8px 12px;color:#111}
+.history-actions .btn:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:600px){.document-toolbar{gap:6px}.document-toolbar .save-status{flex-wrap:wrap;width:100%}.history-actions{margin-left:auto}.history-actions .btn{padding:7px 9px;font-size:13px}}

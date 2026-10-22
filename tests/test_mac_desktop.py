@@ -22,6 +22,11 @@ class MacDesktopTests(unittest.TestCase):
         module=types.ModuleType('keyring.backends.macOS');module.Keyring=lambda:store
         return patch.dict(sys.modules,{'keyring':types.ModuleType('keyring'),'keyring.backends':types.ModuleType('keyring.backends'),'keyring.backends.macOS':module})
 
+    def test_launcher_opens_the_friendly_app_address(self):
+        with patch.object(app.subprocess,'run') as run:
+            app.open_browser(3002)
+        run.assert_called_once_with(['/usr/bin/open','http://localhost:3002/ma-group-cv'],check=True)
+
     def test_saved_key_is_reused_without_a_prompt(self):
         store=Mock();store.get_password.return_value='test-only-placeholder'
         with self.keychain(store),patch.object(app,'key_dialog') as prompt:

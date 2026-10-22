@@ -59,7 +59,7 @@ def stop_current():
     raise RuntimeError('The background app did not stop. Please restart your Mac before trying again.')
 
 def open_browser(port):
-    subprocess.run(['/usr/bin/open',f'http://127.0.0.1:{port}'],check=True)
+    subprocess.run(['/usr/bin/open',f'http://localhost:{port}/ma-group-cv'],check=True)
 
 def key_dialog():
     result=apple('''set answer to display dialog "Enter your Gemini API key once. It will be stored securely in your Mac login Keychain. Choose Use local tools to continue without Gemini." with title "M&A Group — Gemini" default answer "" with hidden answer buttons {"Cancel", "Use local tools", "Save key"} default button "Save key"

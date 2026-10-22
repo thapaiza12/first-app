@@ -9,7 +9,7 @@ from export_documents import asof,jpdate,birth,TITLE,MOTIVATION,PREFERENCES
 
 PAGE_W,PAGE_H=595.28,841.89
 X,W=42,511.28
-HEADING_SIZE,CONTENT_SIZE=13,12
+HEADING_SIZE,CONTENT_SIZE=13,11.5
 GRID_HEADER=28
 BOTTOM=764
 
@@ -146,7 +146,7 @@ def header_layout(d):
     }
     phone=rich([('Phone:',d.get('phone','')),('Email:',d.get('email',''))],W-12)
     widest=max(sum(pdfmetrics.stringWidth(run['text'],'JP',run['size']) for run in row) for row in phone['runs'])
-    # Widen the contact column to keep the email at 12 pt on one line.
+    # Widen the contact column to keep the email at 11.5 pt on one line.
     wide=widest+16>W-210
     contact_width=W if wide else min(W-210,max(220,widest+16))
     address_width=W if wide else W-contact_width
@@ -176,12 +176,12 @@ def layout(d):
     bodies={}
     for key,value,minimum in [('motivation','\n\n'.join(filter(None,[d.get('motivation',''),d.get('strengths','')])),40),('preferences',d.get('preferences',''),24)]:
         wrapped=lines(value,CONTENT_SIZE,(W-12)*.96)
-        bodies[key]=max(minimum,len(wrapped)*18+16)
-        fields[key]={**plain(value),'lines':wrapped,'leading':18,'topPadding':8}
+        bodies[key]=max(minimum,len(wrapped)*CONTENT_SIZE*1.5+16)
+        fields[key]={**plain(value),'lines':wrapped,'leading':CONTENT_SIZE*1.5,'topPadding':8}
     heights={'chronology':GRID_HEADER+sum(r['height'] for r in right)+2,'qualifications':GRID_HEADER+sum(r['height'] for r in quals)+2,**{k:heading_heights[k]+bodies[k] for k in titles}}
     budget=722-36
     if capacity<24 or sum(heights.values())>budget:
-        raise ValueError('空白行・余白を自動調整しましたが、見出し13pt・本文12ptのまま2ページに収められません。内容は保存されています。長い内容を整理してください。文字は縮小・省略していません。')
+        raise ValueError('空白行・余白を自動調整しましたが、見出し13pt・本文11.5ptのまま2ページに収められません。内容は保存されています。長い内容を整理してください。文字は縮小・省略していません。')
     desired={'chronology':134,'qualifications':140,'motivation':240,'preferences':110}
     deficits={k:max(0,desired[k]-heights[k]) for k in heights};spare=budget-sum(heights.values());total=sum(deficits.values())
     if total:

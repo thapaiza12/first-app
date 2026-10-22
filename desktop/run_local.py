@@ -116,7 +116,8 @@ def main():
                 time.sleep(.25)
         else: raise RuntimeError('The app took too long to start. Close this window and try again.')
         if not args.no_browser:
-            if not webbrowser.open(url): print('Open this address in Safari or Chrome: '+url,flush=True)
+            browser_url='http://localhost:'+env['PORT']+'/ma-group-cv'
+            if not webbrowser.open(browser_url): print('Open M&A Group CV in Safari or Chrome: '+browser_url,flush=True)
         print('App is running on this computer. Close the browser tab when finished, then stop this Terminal window.',flush=True)
         proc.wait()
     except KeyboardInterrupt:
