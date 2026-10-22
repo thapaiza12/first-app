@@ -68,6 +68,7 @@ def chronology(d):
     result=[['','','学歴']]
     for r in education_events(d.get('education',[])):
         date=r.get('date','').split('-');result.append([date[0] if date else '',date[1] if len(date)>1 else '',r.get('name','')+ ('\n'+r['detail'] if r.get('detail') else '')])
+    result.append(['','',''])
     result.append(['','','職歴'])
     for r in employment_events(d.get('experience',[])):
         date=r.get('date','').split('-');result.append([date[0] if date else '',date[1] if len(date)>1 else '',r.get('name','')])
@@ -77,6 +78,9 @@ def measured_rows(rows,size,widths):
     result=[]
     for row in rows:
         cells=[{'text':str(v or ''),'lines':lines(v,size,(w-12)*.91),'size':size,'leading':size*1.35} for v,w in zip(row,widths)]
+        if row[2] in ['学歴','職歴']:
+            cells[2].update(size=size+1,leading=(size+1)*1.35,bold=True,align='center')
+        elif row[2]=='以上':cells[2]['align']='right'
         height=max(20,max(len(c['lines'])*c['leading'] for c in cells)+8)
         result.append({'cells':cells,'height':height})
     return result
@@ -109,6 +113,14 @@ def tables(d):
     else:raise ValueError('履歴書を2ページに収められません。「免許・資格」の件数や長い資格名を整理してください。')
     return widths,jobs,qrows
 
+def contact_block(d):
+    values=['Phone: '+d.get('phone',''),'Email: '+d.get('email','')]
+    init_font()
+    widest=max(pdfmetrics.stringWidth(v,'JP',9) for v in values)
+    size=min(9,9*126/max(widest,1))
+    if size<5.5:raise ValueError('メールアドレスが長すぎます。入力内容を確認してください。')
+    return {'text':'\n'.join(values),'lines':values,'size':size,'leading':size*1.5}
+
 def layout(d):
     init_font();widths,jobs,quals=tables(d)
     # Every value is measured before either format is written.
@@ -117,9 +129,9 @@ def layout(d):
       'name':fit(d.get('name',''),W-115,52,'氏名',18,12),
       'birth':fit(birth(d)+'　性別（任意） '+d.get('gender',''),W-115,29,'生年月日・性別',9,9),
       'address':fit('ふりがな　'+d.get('addressKana','')+'\n現住所　〒'+d.get('postalCode','')+'\n'+d.get('address',''),W-150,48,'現住所',9,9),
-      'contact':fit('電話　'+d.get('phone','')+'\nE-mail　'+d.get('email',''),138,48,'電話・メール',9,9),
+      'contact':contact_block(d),
       'alternate':fit('ふりがな　'+d.get('alternateAddressKana','')+'\n連絡先　〒'+d.get('alternatePostalCode','')+'\n'+d.get('alternateAddress',''),W-150,48,'連絡先',9,9),
-      'alternatePhone':fit('電話　'+d.get('alternatePhone','')+'\n（現住所以外に連絡を希望する場合のみ記入）',138,48,'連絡先電話',8,8),
+      'alternatePhone':fit('Phone: '+d.get('alternatePhone','')+'\n（現住所以外に連絡を希望する場合のみ記入）',138,48,'連絡先電話',8,8),
       'motivation':fit('\n\n'.join(filter(None,[d.get('motivation',''),d.get('strengths','')])),W-12,188,'志望の動機・特技・自己PR'),
       'preferences':fit(d.get('preferences',''),W-12,136,'本人希望記入欄'),
     }
@@ -132,7 +144,11 @@ def pdf(d,out):
     def rule(x,y,w,h):c.setLineWidth(.5);c.rect(x,PAGE_H-y-h,w,h,stroke=1,fill=0)
     def text(block,x,y):
         c.setFont('JP',block['size'])
-        for i,line in enumerate(block['lines']):c.drawString(x,PAGE_H-y-block['size']-i*block['leading'],line)
+        for i,line in enumerate(block['lines']):
+            baseline=PAGE_H-y-block['size']-i*block['leading']
+            if block.get('bold'):
+                c.saveState();c.setLineWidth(.18);t=c.beginText(x,baseline);t.setFont('JP',block['size']);t.setTextRenderMode(2);t.textOut(line);c.drawText(t);c.restoreState()
+            else:c.drawString(x,baseline,line)
     def label(value,x,y,size=8):text({'lines':[value],'size':size,'leading':size*1.35},x,y)
     def grid(rows,x,y,widths,label_value,total_height):
         rule(x,y,sum(widths),total_height)
@@ -141,7 +157,11 @@ def pdf(d,out):
         cursor=y+22;c.line(x,PAGE_H-cursor,x+sum(widths),PAGE_H-cursor)
         for row in rows:
             offset=0
-            for field,width in zip(row['cells'],widths):text(field,x+offset+6,cursor+4);offset+=width
+            for field,width in zip(row['cells'],widths):
+                tx=x+offset+6
+                if field.get('align')=='center':tx=x+offset+(width-pdfmetrics.stringWidth(field['lines'][0],'JP',field['size']))/2
+                elif field.get('align')=='right':tx=x+offset+width-6-pdfmetrics.stringWidth(field['lines'][0],'JP',field['size'])
+                text(field,tx,cursor+4);offset+=width
             cursor+=row['height'];c.line(x,PAGE_H-cursor,x+sum(widths),PAGE_H-cursor)
     def header_footer(page):
         c.setFont('JP',8);c.drawRightString(PAGE_W-42,24,str(page))
@@ -157,8 +177,8 @@ def pdf(d,out):
     for y,left,right in [(206,'address','contact'),(254,'alternate','alternatePhone')]:
         rule(X,y,W,48);c.line(X+W-144,PAGE_H-y,X+W-144,PAGE_H-y-48)
         text(model['fields'][left],X+6,y+3);text(model['fields'][right],X+W-138,y+3)
-    grid(model['jobs'][0],X,318,model['widths'],TITLE,446);header_footer(1);c.showPage()
-    grid(model['jobs'][1],X,42,model['widths'],TITLE,158);grid(model['qualifications'],X,212,model['widths'],'免許・資格',140)
+    grid(model['jobs'][0],X,318,model['widths'],'',446);header_footer(1);c.showPage()
+    grid(model['jobs'][1],X,42,model['widths'],'',158);grid(model['qualifications'],X,212,model['widths'],'免許・資格',140)
     for y,h,key,heading,labelh in [(366,214,'motivation',MOTIVATION,22),(594,170,'preferences',PREFERENCES,30)]:
         rule(X,y,W,h);c.line(X,PAGE_H-y-labelh,X+W,PAGE_H-y-labelh)
         heading_block=fit(heading,W-12,labelh,heading,8,8);text(heading_block,X+6,y+3);text(model['fields'][key],X+6,y+labelh+4)
@@ -189,7 +209,8 @@ def word(d,out):
         for i,b in enumerate(blocks):
             paragraph=cell.paragraphs[0] if i==0 else cell.add_paragraph()
             paragraph.paragraph_format.line_spacing=Pt(b['leading']);paragraph.paragraph_format.left_indent=Pt(padding);paragraph.paragraph_format.right_indent=Pt(padding)
-            run=paragraph.add_run('\n'.join(b['lines']));run.font.size=Pt(b['size']);run.font.name='Noto Serif JP';run._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'),'Noto Serif JP')
+            paragraph.alignment={'center':WD_ALIGN_PARAGRAPH.CENTER,'right':WD_ALIGN_PARAGRAPH.RIGHT}.get(b.get('align'),WD_ALIGN_PARAGRAPH.LEFT)
+            run=paragraph.add_run('\n'.join(b['lines']));run.bold=b.get('bold',False);run.font.size=Pt(b['size']);run.font.name='Noto Serif JP';run._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'),'Noto Serif JP')
     def block(value,size=9):return {'lines':[value],'size':size,'leading':size*1.35}
     def fixrow(row,height):
         row.height=Pt(height);row.height_rule=WD_ROW_HEIGHT_RULE.EXACTLY
@@ -221,9 +242,9 @@ def word(d,out):
         right.text='';p=right.paragraphs[0];p.paragraph_format.line_spacing=Pt(114);p.add_run().add_picture(io.BytesIO(base64.b64decode(d['photo'].split(',',1)[1])),width=Mm(30),height=Mm(40))
     else:write(right,[block('写真を貼る位置',8),block('縦40mm × 横30mm',8)])
     for cell,l,r in [(first[2],'address','contact'),(first[3],'alternate','alternatePhone')]:nested(cell,[[model['fields'][l],model['fields'][r]]],[W-144,144],[46])
-    chronology_cell(first[5],model['jobs'][0],TITLE)
+    chronology_cell(first[5],model['jobs'][0],'')
     paragraph=doc.add_paragraph();paragraph.paragraph_format.line_spacing=Pt(1);paragraph.add_run().add_break(WD_BREAK.PAGE)
-    second=outer([158,12,140,14,214,14,170]);chronology_cell(second[0],model['jobs'][1],TITLE);chronology_cell(second[2],model['qualifications'],'免許・資格')
+    second=outer([158,12,140,14,214,14,170]);chronology_cell(second[0],model['jobs'][1],'');chronology_cell(second[2],model['qualifications'],'免許・資格')
     for cell,key,label,labelh,bodyh in [(second[4],'motivation',MOTIVATION,22,190),(second[6],'preferences',PREFERENCES,30,138)]:
         labelblock=fit(label,W-12,labelh,label,8,8);nested(cell,[[labelblock],[model['fields'][key]]],[W],[labelh,bodyh])
     doc.add_paragraph().paragraph_format.line_spacing=Pt(1)

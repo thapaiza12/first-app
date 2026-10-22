@@ -24,6 +24,29 @@ class ResumeLayoutTests(unittest.TestCase):
                 rows=[''.join(r.itertext()) for r in xml.findall('.//w:tr',ns)]
                 self.assertTrue(any('入学' in r and '卒業' not in r for r in rows))
                 self.assertTrue(any('卒業' in r and '入学' not in r for r in rows))
+    def test_contact_headers_spacing_and_alignment(self):
+        d=self.sample();d.update(email='long.applicant.address@example.com',phone='090-1234-5678')
+        m=layout(d);contact=m['fields']['contact']
+        self.assertEqual(contact['lines'],['Phone: 090-1234-5678','Email: long.applicant.address@example.com'])
+        rows=chronology(d);idx=next(i for i,r in enumerate(rows) if r[2]=='職歴')
+        self.assertEqual(rows[idx-1],['','',''])
+        with tempfile.TemporaryDirectory() as folder:
+            p=Path(folder)/'contact.pdf';render_document(d,'pdf',str(p))
+            with fitz.open(p) as pdf:
+                text=''.join(page.get_text() for page in pdf)
+                self.assertNotIn('各別にまとめて書く',text)
+                self.assertIn('Email: long.applicant.address@example.com',text)
+                endings=[span for page in pdf for block in page.get_text('dict')['blocks'] if 'lines' in block for line in block['lines'] for span in line['spans'] if span['text']=='以上']
+                self.assertGreater(endings[0]['bbox'][0],500)
+            p=Path(folder)/'contact.docx';render_document(d,'docx',str(p))
+            with zipfile.ZipFile(p) as archive:
+                xml=E.fromstring(archive.read('word/document.xml'));ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+                for paragraph in xml.findall('.//w:p',ns):
+                    value=''.join(t.text or '' for t in paragraph.findall('.//w:t',ns))
+                    if value in ['学歴','職歴']:
+                        self.assertEqual(paragraph.find('w:pPr/w:jc',ns).get('{'+ns['w']+'}val'),'center')
+                        self.assertIsNotNone(paragraph.find('w:r/w:rPr/w:b',ns))
+                    if value=='以上':self.assertEqual(paragraph.find('w:pPr/w:jc',ns).get('{'+ns['w']+'}val'),'right')
     def sample(self):return {'type':'rirekisho','name':'山田 太郎','documentDate':'2026-10-16','education':[{'date':'2013-04','name':'大学 入学'}],'experience':[{'date':'2017-04','end':'2024-03','name':'株式会社テスト'}],'licenses':[],'motivation':'営業経験を活かして貢献します。'}
     def test_each_company_has_enter_and_exit_rows_and_current_employment_is_not_retirement(self):
         events=employment_events([{'name':'A社','date':'2020-04','end':'2024-03'},{'name':'B社','date':'2024-04','current':True}])
