@@ -166,3 +166,14 @@ test('CV pages are not selected as photos and dragging a photo anywhere in the d
  await expect(page.getByAltText('切り抜く写真')).toBeVisible();
  await expect(page.getByRole('button',{name:'この写真を使用'})).toBeEnabled();
 });
+
+test('resume preview keeps headings at the 13-to-12 size ratio and the name larger',async({page})=>{
+ await page.goto('/');await page.getByLabel('氏名',{exact:true}).fill('山田 太郎');
+ await page.getByRole('button',{name:'5 志望動機・特技',exact:true}).click();
+ await page.getByLabel('志望の動機',{exact:true}).fill('私は今、農業の仕事をしています。パン作りに挑戦したいです。');
+ const paper=page.locator('.paper-stage .resume-pages');await expect(paper).toHaveAttribute('data-heading-font-pt','13');await expect(paper).toHaveAttribute('data-content-font-pt','12');
+ const heading=await paper.locator('.mhlw-box h4').first().evaluate(el=>parseFloat(getComputedStyle(el).fontSize));
+ const content=await paper.locator('.mhlw-box>p').first().evaluate(el=>parseFloat(getComputedStyle(el).fontSize));
+ expect(heading/content).toBeCloseTo(13/12,2);
+ expect(await paper.locator('.paper-name strong').evaluate(el=>parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThan(content);
+});

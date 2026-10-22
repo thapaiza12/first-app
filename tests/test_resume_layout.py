@@ -49,7 +49,7 @@ class ResumeLayoutTests(unittest.TestCase):
                         self.assertIsNotNone(paragraph.find('w:r/w:rPr/w:b',ns))
                     if value=='以上':self.assertEqual(paragraph.find('w:pPr/w:jc',ns).get('{'+ns['w']+'}val'),'right')
     def test_unused_rows_are_reclaimed_for_long_motivation_without_losing_text(self):
-        d=self.sample();d['motivation']='応募者として実際の経験を活かして貢献します。'*60+'最後まで保持する文章です。'
+        d=self.sample();d['motivation']='応募者として実際の経験を活かして貢献します。'*40+'最後まで保持する文章です。'
         d['preferences']='貴社の規定に従います。'
         original=copy.deepcopy(d);m=layout(d)
         self.assertGreater(m['page2']['motivation'],214)
@@ -81,7 +81,7 @@ class ResumeLayoutTests(unittest.TestCase):
                     self.assertEqual(len(pages),2)
                     self.assertIn('会社14' if key=='experience' else '資格13',''.join(p.get_text() for p in pages))
     def test_short_and_long_documents_fill_both_pages_to_matching_bottom_margins(self):
-        for count in [1,20,50]:
+        for count in [1,20,30]:
             d=self.sample();d['motivation']='Experience in international operations and project management. '*count
             m=layout(d)
             self.assertAlmostEqual(sum(m['page2'].values())+36,722)
@@ -114,6 +114,44 @@ class ResumeLayoutTests(unittest.TestCase):
                 texts=[''.join(t.text or '' for t in cell.findall('.//w:t',ns)) for cell in row.findall('w:tc',ns)]
                 self.assertTrue(any('2001年' in text and '性別' not in text for text in texts))
                 self.assertTrue(any('性別' in text and '2001年' not in text for text in texts))
+    def test_requested_13pt_headings_and_12pt_content_in_pdf_and_word(self):
+        d=self.sample();d.update(furigana='やまだ たろう',phone='090-1234-5678',email='long.applicant.address@example.com',birthDate='2001-02-27',gender='男',address='東京都千代田区丸の内1-2-3',preferences='貴社の規定に従います',motivation='私は今、農業の仕事をしています。食材を大切にする経験をしました。次は、食料品製造業でパン作りの仕事に挑戦したいです。Boulangerie EMUで真面目に一生懸命働き、日本の素晴らしいパン作りや仕事の進め方を学びたいです。一日も早く仕事を覚えて貴社に貢献し、将来は日本で学んだ知識や技術を母国のネパールでも活かしたいと考えています。どうぞよろしくお願いします。')
+        m=layout(d);self.assertEqual(m['fonts'],{'heading':13,'content':12});self.assertEqual(m['fields']['motivation']['size'],12)
+        with tempfile.TemporaryDirectory() as folder:
+            out=Path(folder)/'fonts.pdf';render_document(d,'pdf',str(out))
+            with fitz.open(out) as pdf:
+                self.assertEqual(len(pdf),2)
+                spans=[span for page in pdf for block in page.get_text('dict')['blocks'] if 'lines' in block for line in block['lines'] for span in line['spans'] if span['text'].strip()]
+                for span in spans:
+                    if d['name'] in span['text']:self.assertEqual(round(span['size'],2),18)
+                    else:self.assertIn(round(span['size'],2),[12,13],span['text'])
+                heading=next(span for span in spans if '志望の動機' in span['text']);self.assertEqual(heading['size'],13)
+                text=''.join(page.get_text() for page in pdf).replace('\n','');self.assertIn(d['motivation'],text)
+            out=Path(folder)/'fonts.docx';render_document(d,'docx',str(out))
+            with zipfile.ZipFile(out) as archive:
+                root=E.fromstring(archive.read('word/document.xml'));ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+                for run in root.findall('.//w:r',ns):
+                    value=''.join(t.text or '' for t in run.findall('w:t',ns))
+                    if not value.strip():continue
+                    size=int(run.find('w:rPr/w:sz',ns).get('{'+ns['w']+'}val'))
+                    self.assertIn(size,[24,26,36],value)
+                    if '志望の動機' in value:self.assertEqual(size,26)
+                    if '私は今' in value:self.assertEqual(size,24)
+    def test_fixed_sizes_are_never_silently_shrunk_to_hide_overflow(self):
+        d=self.sample();d['motivation']='応募者として実際の経験を活かして貢献します。'*60;before=copy.deepcopy(d)
+        with tempfile.TemporaryDirectory() as folder:
+            for fmt in ['pdf','docx']:
+                out=Path(folder)/('fixed.'+fmt)
+                with self.assertRaisesRegex(ValueError,'13pt・本文12pt'):render_document(d,fmt,str(out))
+                self.assertFalse(out.exists())
+        self.assertEqual(d,before)
+    def test_long_contact_and_kana_expand_layout_without_reducing_font_sizes(self):
+        d=self.sample();d.update(furigana='やまだたろう'*8,email='very.long.applicant.address.department@example-company.co.jp')
+        m=layout(d);self.assertGreater(m['header']['mainHeight'],120);self.assertEqual(m['header']['contactWidth'],511.28)
+        self.assertEqual(len(m['fields']['contact']['lines']),2)
+        self.assertTrue(all(run['size'] in [12,13] for row in m['fields']['contact']['runs'] for run in row))
+        with tempfile.TemporaryDirectory() as folder:
+            for fmt in ['pdf','docx']:render_document(d,fmt,str(Path(folder)/('long-contact.'+fmt)))
     def sample(self):return {'type':'rirekisho','name':'山田 太郎','documentDate':'2026-10-16','education':[{'date':'2013-04','name':'大学 入学'}],'experience':[{'date':'2017-04','end':'2024-03','name':'株式会社テスト'}],'licenses':[],'motivation':'営業経験を活かして貢献します。'}
     def test_each_company_has_enter_and_exit_rows_and_current_employment_is_not_retirement(self):
         events=employment_events([{'name':'A社','date':'2020-04','end':'2024-03'},{'name':'B社','date':'2024-04','current':True}])
