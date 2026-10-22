@@ -49,9 +49,24 @@ def employment_events(rows):
         out.append({'date':'' if r.get('current') else r.get('end',''),'name':'現在に至る' if r.get('current') else r.get('name','')+'　退社'})
     return out
 
+def education_events(rows):
+    out=[]
+    event=re.compile(r'(入学|卒業|修了|中退|退学|在学中)\s*$')
+    for original in rows:
+        r=dict(original);name=r.get('name','').strip();detail=r.get('detail','').strip()
+        parts=[p for p in [*name.splitlines(),*detail.splitlines()] if p]
+        explicit=list(dict.fromkeys(p for p in parts if event.search(p)))
+        if explicit:
+            extra=[p for p in parts if not event.search(p) and not any(e.startswith(p) for e in explicit)]
+            for i,p in enumerate(explicit):out.append({**r,'date':r.get('end','') if i else r.get('date',''),'end':'','name':p,'detail':'' if i else '\n'.join(extra)})
+        elif r.get('end'):
+            out.extend([{**r,'name':name+'　入学','end':'','detail':''},{**r,'date':r['end'],'end':'','name':name+'　卒業','detail':detail}])
+        else:out.append({**r,'name':name,'detail':detail})
+    return out
+
 def chronology(d):
     result=[['','','学歴']]
-    for r in d.get('education',[]):
+    for r in education_events(d.get('education',[])):
         date=r.get('date','').split('-');result.append([date[0] if date else '',date[1] if len(date)>1 else '',r.get('name','')+ ('\n'+r['detail'] if r.get('detail') else '')])
     result.append(['','','職歴'])
     for r in employment_events(d.get('experience',[])):

@@ -105,3 +105,15 @@ test('exhausted rate limits show a friendly status without an error dialog or da
  await expect(page.getByLabel('氏名',{exact:true})).toHaveValue('保持する氏名');
  await expect(page.locator('.file-chip').filter({hasText:'rate-test.txt'})).toBeVisible();
 });
+
+test('education admission and graduation display on separate dated preview rows',async({page})=>{
+ await page.route('**/api/status',r=>r.fulfill({json:{assistMode:'gemini',geminiConfigured:true}}));
+ await page.route('**/api/assist',r=>r.fulfill({json:{mode:'gemini',warnings:[],data:{education:[{name:'テスト大学',date:'2012-04',end:'2016-03'}]}}}));
+ await page.goto('/');await page.locator('.editor-content input[type=file]').first().setInputFiles({name:'education.txt',mimeType:'text/plain',buffer:Buffer.from('テスト大学 2012年4月入学 2016年3月卒業')});
+ await page.getByRole('button',{name:'選択した項目を反映'}).click();
+ const rows=page.locator('.paper-stage .mhlw-row');
+ await expect(rows.filter({hasText:'テスト大学　入学'})).toHaveCount(1);
+ await expect(rows.filter({hasText:'テスト大学　卒業'})).toHaveCount(1);
+ await expect(rows.filter({hasText:'テスト大学　入学'})).toContainText('2012');
+ await expect(rows.filter({hasText:'テスト大学　卒業'})).toContainText('2016');
+});
