@@ -10,7 +10,9 @@ def detect_faces(image):
             path=Path(folder)/'input.png';image.save(path,format='PNG')
             result=subprocess.run(['/usr/bin/osascript','-l','JavaScript',str(Path(__file__).with_name('mac_faces.js')),str(path)],capture_output=True,timeout=15)
             if result.returncode:return []
-            faces=json.loads(result.stdout.decode()).get('faces',[])
+            response=json.loads(result.stdout.decode())
+            if not isinstance(response,dict):return []
+            faces=response.get('faces',[])
             if not isinstance(faces,list):return []
             return [f for f in faces if isinstance(f,dict) and all(isinstance(f.get(k),(int,float)) and math.isfinite(f[k]) for k in ['x','y','width','height']) and f.get('confidence',0)>=.6 and f['width']>0 and f['height']>0 and f['x']>=0 and f['y']>=0 and f['x']+f['width']<=1.001 and f['y']+f['height']<=1.001]
     except (OSError,ValueError,TypeError,subprocess.TimeoutExpired):return []

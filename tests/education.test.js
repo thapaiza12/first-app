@@ -28,3 +28,15 @@ test('graduation-only and graduate-school completion retain their known dates',a
  assert.equal(rows[0].completion,'修了');assert.equal(rows[1].date,'');assert.equal(rows[1].end,'2012-03');
  const events=educationEvents(rows);assert.equal(events.length,3);assert.equal(events[1].name,'大学院　修了');
 });
+
+test('editing a school preserves completion type before its end date is filled',async()=>{
+ const {educationSchools}=await import('../src/education.js');
+ const school={name:'テスト大学院',date:'2020-04',end:'',detail:'研究科',completion:'修了'};
+ assert.deepEqual(educationSchools([school]),[school]);
+ assert.equal(educationSchools([{...school,date:''}])[0].completion,'修了');
+});
+
+test('an older admission-labelled period retains its graduation event',()=>{
+ const result=educationEvents([{name:'大学 入学',date:'2018-02',end:'2022-04'}]);
+ assert.equal(result.length,2);assert.equal(result[1].date,'2022-04');assert.equal(result[1].name,'大学　卒業');
+});

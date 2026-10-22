@@ -8,6 +8,10 @@ export function educationEvents(rows=[]){
   if(explicit.length){
    const unique=[...new Set(explicit)];
    const extra=parts.filter(p=>!event.test(p)&&!unique.some(e=>e.startsWith(p)));
+   if(unique.length===1&&/入学\s*$/.test(unique[0])&&row.end){
+    const base=unique[0].replace(/[\s　]*入学\s*$/,'');
+    return [{...row,name:unique[0],end:'',completion:undefined,detail:''},{...row,name:base+'　'+(row.completion||'卒業'),date:row.end,end:'',completion:undefined,detail:extra.join('\n')}];
+   }
    return unique.map((p,i)=>({...row,date:i?row.end||'':row.date||'',end:'',name:p,detail:i?'':extra.join('\n')}));
   }
   if(row.end||row.completion){
@@ -22,7 +26,10 @@ export function educationEvents(rows=[]){
 // One editable card per school, retaining the original event dates.
 export function educationSchools(rows=[]){
  const schools=[];
- for(const event of educationEvents(rows)){
+ const inputs=rows.flatMap(row=>row.completion&&!/(入学|卒業|修了|中退|退学|在学中)\s*$/.test(row.name||'')?[{school:row}]:educationEvents([row]).map(event=>({event})));
+ for(const input of inputs){
+  if(input.school){const row=input.school;schools.push({...row,name:(row.name||'').trim(),date:row.date||'',end:row.end||''});continue;}
+  const event=input.event;
   const match=(event.name||'').match(/^(.*?)[\s　]*(入学|卒業|修了|中退|退学|在学中)\s*$/);
   const name=(match?match[1]:event.name||'').trim(),kind=match?.[2];
   const detail=event.detail||'';

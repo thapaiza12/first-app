@@ -128,12 +128,21 @@ test('one school has two editable dates and preferences start with an editable d
  await expect(page.getByLabel('学校名・学部',{exact:true})).toHaveValue('Pioneers multiple campus (大学)');
  await expect(page.getByLabel('入学年月',{exact:true})).toHaveValue('2018-02');
  await expect(page.getByLabel('卒業年月',{exact:true})).toHaveValue('2022-04');
+ await page.getByLabel('卒業年月',{exact:true}).fill('');
+ await page.getByLabel('修了区分',{exact:true}).selectOption('修了');
+ await expect(page.getByLabel('修了区分',{exact:true})).toHaveValue('修了');
  await page.getByLabel('卒業年月',{exact:true}).fill('2023-03');
- const rows=page.locator('.paper-stage .mhlw-row');await expect(rows.filter({hasText:'Pioneers multiple campus (大学)　卒業'})).toContainText('2023');
+ const rows=page.locator('.paper-stage .mhlw-row');await expect(rows.filter({hasText:'Pioneers multiple campus (大学)　修了'})).toContainText('2023');
  await page.getByRole('button',{name:'6 本人希望',exact:true}).click();
  await expect(page.getByLabel('本人希望記入欄',{exact:true})).toHaveValue('貴社の規定に従います');
  await page.getByLabel('本人希望記入欄',{exact:true}).fill('勤務地は東京都内を希望します。');
  await expect(page.locator('.paper-stage')).toContainText('勤務地は東京都内を希望します。');
+ await expect(page.locator('.save-status')).toContainText('保存済み');
+ await page.reload();await page.getByRole('button',{name:/下書き/}).click();await page.getByRole('button',{name:'編集を続ける'}).first().click();
+ await page.getByRole('button',{name:'2 学歴',exact:true}).click();await expect(page.locator('.repeat-card')).toHaveCount(1);
+ await expect(page.getByLabel('修了区分',{exact:true})).toHaveValue('修了');
+ await expect(page.getByLabel('卒業年月',{exact:true})).toHaveValue('2023-03');
+ await page.getByRole('button',{name:'6 本人希望',exact:true}).click();await expect(page.getByLabel('本人希望記入欄',{exact:true})).toHaveValue('勤務地は東京都内を希望します。');
 });
 test('CV pages are not selected as photos and dragging a photo anywhere in the dialog works',async({page})=>{
  const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jA1kAAAAASUVORK5CYII=';

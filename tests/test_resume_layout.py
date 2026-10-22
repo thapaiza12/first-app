@@ -9,6 +9,7 @@ from export_documents import render_document
 class ResumeLayoutTests(unittest.TestCase):
     def test_education_events_are_separate_in_pdf_and_word(self):
         d=self.sample();d['education']=[{'name':'テスト大学','date':'2012-04','end':'2016-03'}]
+        legacy=education_events([{'name':'大学 入学','date':'2018-02','end':'2022-04'}]);self.assertEqual(len(legacy),2);self.assertEqual(legacy[1]['date'],'2022-04')
         self.assertEqual(chronology(d)[1:3],[['2012','04','テスト大学　入学'],['2016','03','テスト大学　卒業']])
         self.assertEqual(education_events([{'name':'大学','date':'2016-03','detail':'大学 卒業'}])[0]['detail'],'')
         with tempfile.TemporaryDirectory() as folder:

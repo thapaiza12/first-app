@@ -65,6 +65,9 @@ def education_events(rows):
         explicit=list(dict.fromkeys(p for p in parts if event.search(p)))
         if explicit:
             extra=[p for p in parts if not event.search(p) and not any(e.startswith(p) for e in explicit)]
+            if len(explicit)==1 and re.search(r'入学\s*$',explicit[0]) and r.get('end'):
+                base=re.sub(r'[\s　]*入学\s*$','',explicit[0])
+                out.extend([{**r,'name':explicit[0],'end':'','detail':''},{**r,'name':base+'　'+r.get('completion','卒業'),'date':r['end'],'end':'','detail':'\n'.join(extra)}]);continue
             for i,p in enumerate(explicit):out.append({**r,'date':r.get('end','') if i else r.get('date',''),'end':'','name':p,'detail':'' if i else '\n'.join(extra)})
         elif r.get('end') or r.get('completion'):
             if r.get('date'):out.append({**r,'name':name+'　入学','end':'','detail':'' if r.get('end') else detail})

@@ -38,3 +38,9 @@ class PortraitTests(unittest.TestCase):
   with patch.object(portraits.sys,'platform','darwin'),patch.object(portraits.subprocess,'run',side_effect=run):
    self.assertEqual(len(portraits.detect_faces(Image.new('RGB',(200,300)))),1)
   self.assertTrue(all(not p.exists() for p in paths))
+
+ def test_unexpected_native_payload_falls_back_instead_of_breaking_uploads(self):
+  for payload in [None,[],{'faces':None},{'faces':['bad face']},{'faces':[{'x':0,'y':0,'width':.1,'height':.1,'confidence':'invalid'}]}]:
+   result=type('Result',(),{'returncode':0,'stdout':json.dumps(payload).encode()})()
+   with patch.object(portraits.sys,'platform','darwin'),patch.object(portraits.subprocess,'run',return_value=result):
+    self.assertEqual(portraits.detect_faces(Image.new('RGB',(200,300))),[])
