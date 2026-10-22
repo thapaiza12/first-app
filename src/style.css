@@ -7,3 +7,9 @@ body{color:#111;font-size:15px}.editor-content{color:#111}.field>span{font-size:
 nav button{font-size:14px;color:#111}nav button.active{color:#111}.breadcrumb,.breadcrumb span{font-size:12px;color:#222}.private-label{font-size:12px;color:#222}.page-heading h1,.document-tabs button,.document-tabs .selected{color:#111}.document-tabs button{font-size:15px}.local-notice,.local-notice button{font-size:12px;color:#222}.modal-body,.modal-subtitle,.modal-body>p,.source-details{color:#222;font-size:14px}.form-divider>span,.section-kicker{color:#222}.ai-review-item p{color:#111;font-size:14px}.supported button{color:#333;font-size:11px}.paper-stage .career-section>h3{border:0}@media(max-width:1020px){nav button{font-size:0}}@media(max-width:720px){.breadcrumb,.breadcrumb span{font-size:10px}.private-label{font-size:10px}.local-notice{font-size:11px}.local-notice button{font-size:10px}.document-tabs button{font-size:13px}.page-heading p{font-size:13px}}
 
 .mhlw-category>div{font-weight:600;font-size:1.12em;text-align:center}
+/* Balance the second-sheet preview over its full height, as in the exports. */
+.resume-pages>.mhlw-paper:last-child{display:flex;flex-direction:column}
+.resume-pages>.mhlw-paper:last-child>.mhlw-box{display:flex;flex-direction:column;flex:2 0 auto}
+.resume-pages>.mhlw-paper:last-child>.mhlw-box:nth-last-child(2){flex-grow:1}
+.resume-pages>.mhlw-paper:last-child>.mhlw-box>p{flex:1;overflow-wrap:break-word;word-break:normal}
+.resume-pages>.mhlw-paper:last-child>.paper-page-number{margin-top:auto;padding-top:12px}

@@ -3,7 +3,7 @@ from pathlib import Path
 import xml.etree.ElementTree as E
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'server'))
 import fitz
-from resume_layout import layout,employment_events,education_events,chronology
+from resume_layout import layout,employment_events,education_events,chronology,lines
 from export_documents import render_document
 
 class ResumeLayoutTests(unittest.TestCase):
@@ -54,7 +54,7 @@ class ResumeLayoutTests(unittest.TestCase):
         self.assertGreater(m['page2']['motivation'],214)
         self.assertLess(m['page2']['qualifications'],140)
         self.assertLess(m['page2']['preferences'],170)
-        self.assertLessEqual(sum(m['page2'].values())+36,716)
+        self.assertAlmostEqual(sum(m['page2'].values())+36,722)
         with tempfile.TemporaryDirectory() as folder:
             pdf=Path(folder)/'long.pdf';render_document(d,'pdf',str(pdf))
             with fitz.open(pdf) as pages:
@@ -73,12 +73,29 @@ class ResumeLayoutTests(unittest.TestCase):
     def test_history_and_qualifications_can_borrow_unused_page_two_space(self):
         for key,value in [('experience',[{'name':'会社'+str(i),'date':'2010-04','end':'2020-03'} for i in range(15)]),('licenses',[{'name':'資格'+str(i),'date':'2020-01'} for i in range(14)])]:
             d=self.sample();d[key]=value;m=layout(d)
-            self.assertLessEqual(sum(m['page2'].values())+36,716)
+            self.assertAlmostEqual(sum(m['page2'].values())+36,722)
             with tempfile.TemporaryDirectory() as folder:
                 out=Path(folder)/'expanded.pdf';render_document(d,'pdf',str(out))
                 with fitz.open(out) as pages:
                     self.assertEqual(len(pages),2)
                     self.assertIn('会社14' if key=='experience' else '資格13',''.join(p.get_text() for p in pages))
+    def test_short_and_long_documents_fill_both_pages_to_matching_bottom_margins(self):
+        for count in [1,20,50]:
+            d=self.sample();d['motivation']='Experience in international operations and project management. '*count
+            m=layout(d)
+            self.assertAlmostEqual(sum(m['page2'].values())+36,722)
+            with tempfile.TemporaryDirectory() as folder:
+                out=Path(folder)/'balanced.pdf';render_document(d,'pdf',str(out))
+                with fitz.open(out) as pdf:
+                    self.assertEqual(len(pdf),2)
+                    for page in pdf:
+                        bottom=max(item['rect'].y1 for item in page.get_drawings())
+                        self.assertAlmostEqual(bottom,764,places=1)
+    def test_english_words_wrap_at_word_boundaries(self):
+        value='Experienced Operations Specialist supporting international business development.'
+        wrapped=lines(value,10.5,180)
+        self.assertEqual(''.join(wrapped),value)
+        for word in value.split():self.assertTrue(any(word in line for line in wrapped),word)
     def sample(self):return {'type':'rirekisho','name':'山田 太郎','documentDate':'2026-10-16','education':[{'date':'2013-04','name':'大学 入学'}],'experience':[{'date':'2017-04','end':'2024-03','name':'株式会社テスト'}],'licenses':[],'motivation':'営業経験を活かして貢献します。'}
     def test_each_company_has_enter_and_exit_rows_and_current_employment_is_not_retirement(self):
         events=employment_events([{'name':'A社','date':'2020-04','end':'2024-03'},{'name':'B社','date':'2024-04','current':True}])

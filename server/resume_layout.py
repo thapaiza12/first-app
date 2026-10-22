@@ -17,10 +17,17 @@ def lines(value,size,width):
     init_font();result=[]
     for paragraph in str(value or '').split('\n'):
         current=''
-        for char in paragraph:
-            if current and pdfmetrics.stringWidth(current+char,'JP',size)>width:
-                result.append(current);current=char
-            else:current+=char
+        # Keep ordinary Latin words together; Japanese still wraps by character.
+        tokens=re.findall(r"[A-Za-z0-9]+(?:[’'._@/+\-][A-Za-z0-9]+)*|[ \t]+|.",paragraph)
+        for token in tokens:
+            if current and pdfmetrics.stringWidth(current+token,'JP',size)>width:
+                result.append(current);current=''
+            if pdfmetrics.stringWidth(token,'JP',size)>width:
+                for char in token:
+                    if current and pdfmetrics.stringWidth(current+char,'JP',size)>width:
+                        result.append(current);current=''
+                    current+=char
+            else:current+=token
         result.append(current)
     return result or ['']
 
@@ -113,9 +120,23 @@ def tables(d):
         bodies={}
         for key,value,minimum in [('motivation',motivation,40),('preferences',d.get('preferences',''),20)]:
             wrapped=lines(value,size,(W-12)*.91)
-            bodies[key]=max(minimum,len(wrapped)*size*1.35+12)
+            bodies[key]=max(minimum,len(wrapped)*size*1.5+16)
         heights={'chronology':22+sum(r['height'] for r in right)+2,'qualifications':22+sum(r['height'] for r in qrows)+2,'motivation':22+bodies['motivation'],'preferences':30+bodies['preferences']}
-        if sum(heights.values())+36<=716:
+        # Both pages finish at y=764 (the same bottom margin). First measure
+        # content, then distribute spare height instead of leaving it below boxes.
+        budget=722-36
+        if sum(heights.values())<=budget:
+            desired={'chronology':134,'qualifications':140,'motivation':240,'preferences':110}
+            deficits={k:max(0,desired[k]-heights[k]) for k in heights}
+            spare=budget-sum(heights.values());total=sum(deficits.values())
+            if total:
+                fraction=min(1,spare/total)
+                for k in heights:heights[k]+=deficits[k]*fraction
+            spare=budget-sum(heights.values())
+            for k,weight in [('chronology',.15),('qualifications',.2),('motivation',.5),('preferences',.15)]:heights[k]+=spare*weight
+            right=pad_rows(right,heights['chronology']-24,size,widths)
+            qrows=pad_rows(qrows,heights['qualifications']-24,size,widths)
+            bodies={'motivation':heights['motivation']-22,'preferences':heights['preferences']-30}
             return widths,[pad_rows(left,422,size,widths),right],qrows,{'heights':heights,'bodies':bodies,'size':size}
     raise ValueError('空白行・空欄の余白・文字サイズを自動調整しましたが、全内容を読みやすい2ページに収められません。入力内容は保存されています。詳しい職務内容は職務経歴書へ移してください。')
 
@@ -141,6 +162,8 @@ def layout(d):
       'motivation':fit('\n\n'.join(filter(None,[d.get('motivation',''),d.get('strengths','')])),W-12,plan['bodies']['motivation'],'志望の動機・特技・自己PR',plan['size'],plan['size']),
       'preferences':fit(d.get('preferences',''),W-12,plan['bodies']['preferences'],'本人希望記入欄',plan['size'],plan['size']),
     }
+    for key in ['motivation','preferences']:
+        fields[key]['leading']=plan['size']*1.5;fields[key]['topPadding']=8
     return {'pages':2,'widths':widths,'jobs':jobs,'qualifications':quals,'fields':fields,'page2':plan['heights']}
 
 def pdf(d,out):
@@ -189,7 +212,7 @@ def pdf(d,out):
     grid(model['qualifications'],X,y,model['widths'],'免許・資格',heights['qualifications']);y+=heights['qualifications']+12
     for key,heading,labelh in [('motivation',MOTIVATION,22),('preferences',PREFERENCES,30)]:
         h=heights[key];rule(X,y,W,h);c.line(X,PAGE_H-y-labelh,X+W,PAGE_H-y-labelh)
-        heading_block=fit(heading,W-12,labelh,heading,8,8);text(heading_block,X+6,y+3);text(model['fields'][key],X+6,y+labelh+4)
+        heading_block=fit(heading,W-12,labelh,heading,8,8);text(heading_block,X+6,y+3);text(model['fields'][key],X+6,y+labelh+8)
         y+=h+12
     header_footer(2);c.showPage();c.save()
     import fitz
@@ -217,7 +240,7 @@ def word(d,out):
         cell_format(cell);cell.text=''
         for i,b in enumerate(blocks):
             paragraph=cell.paragraphs[0] if i==0 else cell.add_paragraph()
-            paragraph.paragraph_format.line_spacing=Pt(b['leading']);paragraph.paragraph_format.left_indent=Pt(padding);paragraph.paragraph_format.right_indent=Pt(padding)
+            paragraph.paragraph_format.space_before=Pt(b.get('topPadding',0));paragraph.paragraph_format.line_spacing=Pt(b['leading']);paragraph.paragraph_format.left_indent=Pt(padding);paragraph.paragraph_format.right_indent=Pt(padding)
             paragraph.alignment={'center':WD_ALIGN_PARAGRAPH.CENTER,'right':WD_ALIGN_PARAGRAPH.RIGHT}.get(b.get('align'),WD_ALIGN_PARAGRAPH.LEFT)
             run=paragraph.add_run('\n'.join(b['lines']));run.bold=b.get('bold',False);run.font.size=Pt(b['size']);run.font.name='Noto Serif JP';run._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'),'Noto Serif JP')
     def block(value,size=9):return {'lines':[value],'size':size,'leading':size*1.35}
