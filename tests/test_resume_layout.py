@@ -28,7 +28,7 @@ class ResumeLayoutTests(unittest.TestCase):
     def test_contact_headers_spacing_and_alignment(self):
         d=self.sample();d.update(email='long.applicant.address@example.com',phone='090-1234-5678')
         m=layout(d);contact=m['fields']['contact']
-        self.assertEqual(contact['lines'],['Phone: 090-1234-5678','Email: long.applicant.address@example.com'])
+        self.assertEqual(contact['lines'],['Phone: ','090-1234-5678','Email: ','long.applicant.address@example.com'])
         rows=chronology(d);idx=next(i for i,r in enumerate(rows) if r[2]=='職歴')
         self.assertEqual(rows[idx-1],['','',''])
         with tempfile.TemporaryDirectory() as folder:
@@ -36,7 +36,7 @@ class ResumeLayoutTests(unittest.TestCase):
             with fitz.open(p) as pdf:
                 text=''.join(page.get_text() for page in pdf)
                 self.assertEqual(text.count('各別にまとめて書く'),2)
-                self.assertIn('Email: long.applicant.address@example.com',text)
+                self.assertIn('long.applicant.address@example.com',text)
                 endings=[span for page in pdf for block in page.get_text('dict')['blocks'] if 'lines' in block for line in block['lines'] for span in line['spans'] if span['text']=='以上']
                 self.assertGreater(endings[0]['bbox'][0],500)
             p=Path(folder)/'contact.docx';render_document(d,'docx',str(p))
@@ -114,9 +114,9 @@ class ResumeLayoutTests(unittest.TestCase):
                 texts=[''.join(t.text or '' for t in cell.findall('.//w:t',ns)) for cell in row.findall('w:tc',ns)]
                 self.assertTrue(any('2001年' in text and '性別' not in text for text in texts))
                 self.assertTrue(any('性別' in text and '2001年' not in text for text in texts))
-    def test_requested_12pt_headings_and_11pt_content_in_pdf_and_word(self):
+    def test_requested_12pt_headings_and_10_5pt_content_in_pdf_and_word(self):
         d=self.sample();d.update(furigana='やまだ たろう',phone='090-1234-5678',email='long.applicant.address@example.com',birthDate='2001-02-27',gender='男',address='東京都千代田区丸の内1-2-3',preferences='貴社の規定に従います',motivation='私は今、農業の仕事をしています。食材を大切にする経験をしました。次は、食料品製造業でパン作りの仕事に挑戦したいです。Boulangerie EMUで真面目に一生懸命働き、日本の素晴らしいパン作りや仕事の進め方を学びたいです。一日も早く仕事を覚えて貴社に貢献し、将来は日本で学んだ知識や技術を母国のネパールでも活かしたいと考えています。どうぞよろしくお願いします。')
-        m=layout(d);self.assertEqual(m['fonts'],{'heading':12,'content':11});self.assertEqual(m['fields']['motivation']['size'],11)
+        m=layout(d);self.assertEqual(m['fonts'],{'heading':12,'content':10.5});self.assertEqual(m['fields']['motivation']['size'],10.5)
         with tempfile.TemporaryDirectory() as folder:
             out=Path(folder)/'fonts.pdf';render_document(d,'pdf',str(out))
             with fitz.open(out) as pdf:
@@ -124,7 +124,7 @@ class ResumeLayoutTests(unittest.TestCase):
                 spans=[span for page in pdf for block in page.get_text('dict')['blocks'] if 'lines' in block for line in block['lines'] for span in line['spans'] if span['text'].strip()]
                 for span in spans:
                     if d['name'] in span['text']:self.assertEqual(round(span['size'],2),18)
-                    else:self.assertIn(round(span['size'],2),[11,12],span['text'])
+                    else:self.assertIn(round(span['size'],2),[8,10.5,12,15],span['text'])
                 heading=next(span for span in spans if '志望の動機' in span['text']);self.assertEqual(heading['size'],12)
                 text=''.join(page.get_text() for page in pdf).replace('\n','');self.assertIn(d['motivation'],text)
             out=Path(folder)/'fonts.docx';render_document(d,'docx',str(out))
@@ -134,22 +134,22 @@ class ResumeLayoutTests(unittest.TestCase):
                     value=''.join(t.text or '' for t in run.findall('w:t',ns))
                     if not value.strip():continue
                     size=int(run.find('w:rPr/w:sz',ns).get('{'+ns['w']+'}val'))
-                    self.assertIn(size,[22,24,36],value)
+                    self.assertIn(size,[16,21,24,30,36],value)
                     if '志望の動機' in value:self.assertEqual(size,24)
-                    if '私は今' in value:self.assertEqual(size,22)
+                    if '私は今' in value:self.assertEqual(size,21)
     def test_fixed_sizes_are_never_silently_shrunk_to_hide_overflow(self):
         d=self.sample();d['motivation']='応募者として実際の経験を活かして貢献します。'*60;before=copy.deepcopy(d)
         with tempfile.TemporaryDirectory() as folder:
             for fmt in ['pdf','docx']:
                 out=Path(folder)/('fixed.'+fmt)
-                with self.assertRaisesRegex(ValueError,'12pt・本文11pt'):render_document(d,fmt,str(out))
+                with self.assertRaisesRegex(ValueError,'12pt・本文10.5pt'):render_document(d,fmt,str(out))
                 self.assertFalse(out.exists())
         self.assertEqual(d,before)
     def test_long_contact_and_kana_expand_layout_without_reducing_font_sizes(self):
         d=self.sample();d.update(furigana='やまだたろう'*8,email='very.long.applicant.address.department@example-company.co.jp')
-        m=layout(d);self.assertGreater(m['header']['mainHeight'],120);self.assertEqual(m['header']['contactWidth'],511.28)
-        self.assertEqual(len(m['fields']['contact']['lines']),2)
-        self.assertTrue(all(run['size'] in [11,12] for row in m['fields']['contact']['runs'] for run in row))
+        m=layout(d);self.assertGreater(m['header']['mainHeight'],120);self.assertEqual(m['header']['contactWidth'],321.28)
+        self.assertGreaterEqual(len(m['fields']['contact']['lines']),4)
+        self.assertTrue(all(run['size'] in [8,10.5,12,15] for row in m['fields']['contact']['runs'] for run in row))
         with tempfile.TemporaryDirectory() as folder:
             for fmt in ['pdf','docx']:render_document(d,fmt,str(Path(folder)/('long-contact.'+fmt)))
     def test_content_sized_motivation_bottom_preferences_note_and_centered_headers(self):
@@ -177,6 +177,29 @@ class ResumeLayoutTests(unittest.TestCase):
                     heads=[p for p in xml.findall('.//w:p',ns) if '各別にまとめて書く' in ''.join(t.text or '' for t in p.findall('.//w:t',ns))]
                     self.assertEqual(len(heads),2)
                     for p in heads:self.assertEqual(p.find('w:pPr/w:jc',ns).get('{'+ns['w']+'}val'),'center')
+
+    def test_marked_contact_layout_and_font_exceptions(self):
+        from resume_layout import GENDER_NOTE,W
+        d=self.sample();d.update(name='TEST APPLICANT',furigana='てすと',postalCode='100-0001',address='東京都千代田区千代田1番地',addressKana='とうきょうと',phone='090-1234-5678',email='applicant@example.com',gender='女性')
+        m=layout(d);h=m['header'];self.assertAlmostEqual(h['divider'],h['contactRows'][0]['widths'][0]);self.assertGreater(m['fields']['name']['indent'],15)
+        self.assertTrue(m['fields']['kana']['text'].startswith('フリガナ     '))
+        self.assertGreater(m['fields']['address']['runs'][-1][0]['offset'],50)
+        with tempfile.TemporaryDirectory() as folder:
+            out=Path(folder)/'marked.pdf';render_document(d,'pdf',str(out))
+            with fitz.open(out) as pdf:
+                spans=[s for b in pdf[0].get_text('dict')['blocks'] if 'lines' in b for l in b['lines'] for s in l['spans']]
+                self.assertEqual(next(s for s in spans if '履' in s['text'])['size'],15)
+                self.assertEqual(next(s for s in spans if '記載は任意' in s['text'])['size'],8)
+                self.assertEqual(next(s for s in spans if '現住所以外' in s['text'])['size'],8)
+                label=next(s for s in spans if 'Phone:' in s['text']);value=next(s for s in spans if d['phone'] in s['text']);self.assertGreater(value['bbox'][1],label['bbox'][1])
+                divider=42+h['divider'];vertical=[p for drawing in pdf[0].get_drawings() for item in drawing['items'] if item[0]=='l' for p in [item[1:]] if abs(p[0].x-p[1].x)<.01 and abs(p[0].x-divider)<.01]
+                self.assertTrue(vertical)
+            out=Path(folder)/'marked.docx';render_document(d,'docx',str(out))
+            with zipfile.ZipFile(out) as archive:
+                xml=E.fromstring(archive.read('word/document.xml'));ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+                note=next(r for r in xml.findall('.//w:r',ns) if GENDER_NOTE in ''.join(t.text or '' for t in r.findall('w:t',ns)))
+                self.assertEqual(note.find('w:rPr/w:sz',ns).get('{'+ns['w']+'}val'),'16')
+                self.assertTrue(xml.findall('.//w:tab',ns))
 
     def sample(self):return {'type':'rirekisho','name':'山田 太郎','documentDate':'2026-10-16','education':[{'date':'2013-04','name':'大学 入学'}],'experience':[{'date':'2017-04','end':'2024-03','name':'株式会社テスト'}],'licenses':[],'motivation':'営業経験を活かして貢献します。'}
     def test_each_company_has_enter_and_exit_rows_and_current_employment_is_not_retirement(self):
