@@ -230,3 +230,11 @@ test('kana conversion preserves in-progress IME text and commits katakana',async
  await expect(page.locator('.paper-stage .paper-kana')).toContainText('ヤマダ');
  await expect(page.locator('.paper-stage .gender-note')).toContainText('記載は任意です');
 });
+
+test('final contact preview aligns addresses with kana and keeps formatted phone inline',async({page})=>{
+ await page.goto('/');await page.getByLabel('住所フリガナ',{exact:true}).fill('とうきょうと');await page.getByLabel('現住所',{exact:true}).fill('東京都千代田区');await page.getByLabel('電話番号',{exact:true}).fill('09012345678');
+ const reading=page.locator('.paper-stage .reading-value').first(),address=page.locator('.paper-stage .address-value').first();
+ const r=await reading.boundingBox(),a=await address.boundingBox();expect(Math.abs(r.x-a.x)).toBeLessThan(1);
+ await expect(page.locator('.paper-stage .mhlw-address')).toContainText('Phone: 090-1234-5678');
+ await expect(page.getByLabel('電話番号',{exact:true})).toHaveValue('09012345678');
+});

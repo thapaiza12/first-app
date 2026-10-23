@@ -20,6 +20,12 @@ def katakana(value):
     return ''.join(chr(ord(c)+0x60) if '\u3041'<=c<='\u3096' or c in 'ゝゞ' else c for c in unicodedata.normalize('NFC',str(value or '')))
 
 
+def format_phone(value):
+    import unicodedata
+    original=str(value or '');digits=re.sub(r'\s','',unicodedata.normalize('NFKC',original))
+    return digits[:3]+'-'+digits[3:7]+'-'+digits[7:] if re.fullmatch(r'\d{11}',digits,flags=re.ASCII) else original
+
+
 def init_font():
     if 'JP' not in pdfmetrics.getRegisteredFontNames():pdfmetrics.registerFont(TTFont('JP',str(Path(__file__).parent/'fonts/NotoSerifJP.ttf')))
 
@@ -161,15 +167,15 @@ def header_layout(d):
         ('alternate','alternateAddressKana','alternatePostalCode','alternateAddress','連絡先 〒')]:
         postal=d.get(postal_key,'');width=divider-12
         block=rich([('フリガナ    ',katakana(d.get(kana_key,''))),(label,postal)],width)
-        # Align the address below the end of the postal-code line, with a
-        # measured hanging indent on every wrapped line (not fake spaces).
-        indent=pdfmetrics.stringWidth(label+' ','JP',HEADING_SIZE)+pdfmetrics.stringWidth(postal,'JP',CONTENT_SIZE)
+        # Align the address with the kana value above, using the same measured
+        # label plus five-space prefix on every wrapped line.
+        indent=pdfmetrics.stringWidth('フリガナ     ','JP',HEADING_SIZE)
         indent=min(indent,width-70)
         for line in lines(d.get(address_key,''),CONTENT_SIZE,width-indent):
             block['lines'].append(line);block['runs'].append([{'text':line,'size':CONTENT_SIZE,'offset':indent}])
         block['text']='\n'.join(block['lines']);fields[key]=block
-    fields['contact']=rich([('Phone:',''),('',d.get('phone','')),('Email:',''),('',d.get('email',''))],contact_width-12)
-    fields['alternatePhone']=rich([('Phone:',''),('',d.get('alternatePhone','')),('', '（現住所以外に連絡を希望する場合のみ記入）',NOTE_SIZE)],contact_width-12)
+    fields['contact']=rich([('Phone:',format_phone(d.get('phone',''))),('Email:',''),('',d.get('email',''))],contact_width-12)
+    fields['alternatePhone']=rich([('Phone:',format_phone(d.get('alternatePhone',''))),('', '（現住所以外に連絡を希望する場合のみ記入）',NOTE_SIZE)],contact_width-12)
     pairs=[(['address','contact'],[divider,contact_width]),(['alternate','alternatePhone'],[divider,contact_width])]
     rows=[{'keys':keys,'widths':widths,'height':max(44,max(len(fields[k]['lines'])*18 for k in keys)+12)} for keys,widths in pairs]
     heights=[r['height'] for r in rows];chronology_y=86+main_height+sum(heights)+16

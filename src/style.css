@@ -57,3 +57,14 @@ nav button{font-size:14px;color:#111}nav button.active{color:#111}.breadcrumb,.b
 .resume-pages .mhlw-address .postal-offset>span:last-child{grid-column:2;grid-row:2;overflow-wrap:anywhere}
 .resume-pages .mhlw-address small{display:block;font-size:inherit}
 .resume-pages .mhlw-address .postal-offset .resume-label{margin-right:0}
+
+/* Address begins directly below the kana value; phone alone stays inline. */
+.resume-pages .mhlw-address .postal-offset{display:block}
+.resume-pages .mhlw-address .postal-offset>span{display:block}
+.resume-pages .mhlw-address .postal-offset>span:last-child{padding-left:calc(var(--resume-heading-size)*5.25)}
+.resume-pages .mhlw-address .resume-label{margin-right:0}
+.resume-pages .mhlw-address small>.resume-label{margin-right:1em}
+
+.resume-pages .mhlw-address .reading-prefix{margin-right:0!important;white-space:pre}
+.resume-pages .mhlw-address .postal-offset>span:last-child{padding-left:0;display:grid;grid-template-columns:max-content minmax(0,1fr)}
+.resume-pages .reading-spacer{visibility:hidden;white-space:pre;font-size:var(--resume-heading-size);font-weight:500;line-height:1.35}

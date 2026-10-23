@@ -28,7 +28,7 @@ class ResumeLayoutTests(unittest.TestCase):
     def test_contact_headers_spacing_and_alignment(self):
         d=self.sample();d.update(email='long.applicant.address@example.com',phone='090-1234-5678')
         m=layout(d);contact=m['fields']['contact']
-        self.assertEqual(contact['lines'],['Phone: ','090-1234-5678','Email: ','long.applicant.address@example.com'])
+        self.assertEqual(contact['lines'],['Phone: 090-1234-5678','Email: ','long.applicant.address@example.com'])
         rows=chronology(d);idx=next(i for i,r in enumerate(rows) if r[2]=='職歴')
         self.assertEqual(rows[idx-1],['','',''])
         with tempfile.TemporaryDirectory() as folder:
@@ -148,7 +148,7 @@ class ResumeLayoutTests(unittest.TestCase):
     def test_long_contact_and_kana_expand_layout_without_reducing_font_sizes(self):
         d=self.sample();d.update(furigana='やまだたろう'*8,email='very.long.applicant.address.department@example-company.co.jp')
         m=layout(d);self.assertGreater(m['header']['mainHeight'],120);self.assertEqual(m['header']['contactWidth'],321.28)
-        self.assertGreaterEqual(len(m['fields']['contact']['lines']),4)
+        self.assertGreaterEqual(len(m['fields']['contact']['lines']),3)
         self.assertTrue(all(run['size'] in [8,10.5,12,15] for row in m['fields']['contact']['runs'] for run in row))
         with tempfile.TemporaryDirectory() as folder:
             for fmt in ['pdf','docx']:render_document(d,fmt,str(Path(folder)/('long-contact.'+fmt)))
@@ -191,7 +191,7 @@ class ResumeLayoutTests(unittest.TestCase):
                 self.assertEqual(next(s for s in spans if '履' in s['text'])['size'],15)
                 self.assertEqual(next(s for s in spans if '記載は任意' in s['text'])['size'],8)
                 self.assertEqual(next(s for s in spans if '現住所以外' in s['text'])['size'],8)
-                label=next(s for s in spans if 'Phone:' in s['text']);value=next(s for s in spans if d['phone'] in s['text']);self.assertGreater(value['bbox'][1],label['bbox'][1])
+                label=next(s for s in spans if 'Phone:' in s['text']);value=next(s for s in spans if d['phone'] in s['text']);self.assertAlmostEqual(value['bbox'][3],label['bbox'][3],delta=2)
                 divider=42+h['divider'];vertical=[p for drawing in pdf[0].get_drawings() for item in drawing['items'] if item[0]=='l' for p in [item[1:]] if abs(p[0].x-p[1].x)<.01 and abs(p[0].x-divider)<.01]
                 self.assertTrue(vertical)
             out=Path(folder)/'marked.docx';render_document(d,'docx',str(out))
@@ -200,6 +200,31 @@ class ResumeLayoutTests(unittest.TestCase):
                 note=next(r for r in xml.findall('.//w:r',ns) if GENDER_NOTE in ''.join(t.text or '' for t in r.findall('w:t',ns)))
                 self.assertEqual(note.find('w:rPr/w:sz',ns).get('{'+ns['w']+'}val'),'16')
                 self.assertTrue(xml.findall('.//w:tab',ns))
+
+    def test_final_address_alignment_and_display_only_phone_format(self):
+        from resume_layout import format_phone
+        from reportlab.pdfbase import pdfmetrics
+        d=self.sample();d.update(furigana='てすと',addressKana='とうきょうと',postalCode='100-0001',address='東京都千代田区千代田1番地',phone='09012345678',alternatePhone='08012345678')
+        before=copy.deepcopy(d);m=layout(d)
+        self.assertEqual(m['fields']['contact']['lines'][0],'Phone: 090-1234-5678')
+        self.assertEqual(m['fields']['alternatePhone']['lines'][0],'Phone: 080-1234-5678')
+        prefix=m['fields']['address']['runs'][0][0]
+        self.assertAlmostEqual(m['fields']['address']['runs'][-1][0]['offset'],pdfmetrics.stringWidth(prefix['text'],'JP',prefix['size']))
+        self.assertEqual(format_phone('０９０１２３４５６７８'),'090-1234-5678')
+        self.assertEqual(format_phone('+81 90 1234 5678'),'+81 90 1234 5678')
+        self.assertEqual(format_phone('03-1234-5678'),'03-1234-5678')
+        with tempfile.TemporaryDirectory() as folder:
+            out=Path(folder)/'final.pdf';render_document(d,'pdf',str(out))
+            with fitz.open(out) as pdf:
+                spans=[s for b in pdf[0].get_text('dict')['blocks'] if 'lines' in b for l in b['lines'] for s in l['spans']]
+                kana=next(s for s in spans if 'トウキョウト' in s['text']);address=next(s for s in spans if '東京都千代田' in s['text'])
+                self.assertAlmostEqual(kana['bbox'][0],address['bbox'][0],delta=.2)
+                self.assertIn('Phone: 090-1234-5678',pdf[0].get_text())
+            out=Path(folder)/'final.docx';render_document(d,'docx',str(out))
+            with zipfile.ZipFile(out) as archive:
+                xml=E.fromstring(archive.read('word/document.xml'));ns={'w':'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+                text=''.join(t.text or '' for t in xml.findall('.//w:t',ns));self.assertIn('Phone: 090-1234-5678',text)
+        self.assertEqual(d,before)
 
     def sample(self):return {'type':'rirekisho','name':'山田 太郎','documentDate':'2026-10-16','education':[{'date':'2013-04','name':'大学 入学'}],'experience':[{'date':'2017-04','end':'2024-03','name':'株式会社テスト'}],'licenses':[],'motivation':'営業経験を活かして貢献します。'}
     def test_each_company_has_enter_and_exit_rows_and_current_employment_is_not_retirement(self):
