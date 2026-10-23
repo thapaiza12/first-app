@@ -9,9 +9,15 @@ from export_documents import asof,jpdate,birth,TITLE,MOTIVATION,PREFERENCES
 
 PAGE_W,PAGE_H=595.28,841.89
 X,W=42,511.28
-HEADING_SIZE,CONTENT_SIZE=13,11.5
+HEADING_SIZE,CONTENT_SIZE=12,11
 GRID_HEADER=28
 BOTTOM=764
+GENDER_NOTE='※「性別」欄：記載は任意です。未記載とすることも可能です。'
+
+def katakana(value):
+    import unicodedata
+    return ''.join(chr(ord(c)+0x60) if '\u3041'<=c<='\u3096' or c in 'ゝゞ' else c for c in unicodedata.normalize('NFC',str(value or '')))
+
 
 def init_font():
     if 'JP' not in pdfmetrics.getRegisteredFontNames():pdfmetrics.registerFont(TTFont('JP',str(Path(__file__).parent/'fonts/NotoSerifJP.ttf')))
@@ -134,7 +140,7 @@ def pad_rows(rows,height,widths):
 
 def header_layout(d):
     init_font();main=W-100
-    kana=rich([('ふりがな',d.get('furigana',''))],main-12)
+    kana=rich([('フリガナ',katakana(d.get('furigana','')))],main-12)
     kana_height=max(29,len(kana['lines'])*kana['leading']+8)
     birth_height=32
     main_height=max(120,kana_height+22+18*1.35+8+birth_height)
@@ -146,18 +152,18 @@ def header_layout(d):
     }
     phone=rich([('Phone:',d.get('phone','')),('Email:',d.get('email',''))],W-12)
     widest=max(sum(pdfmetrics.stringWidth(run['text'],'JP',run['size']) for run in row) for row in phone['runs'])
-    # Widen the contact column to keep the email at 11.5 pt on one line.
+    # Widen the contact column to keep the email at 11 pt on one line.
     wide=widest+16>W-210
     contact_width=W if wide else min(W-210,max(220,widest+16))
     address_width=W if wide else W-contact_width
-    fields['address']=rich([('ふりがな',d.get('addressKana','')),('現住所 〒',d.get('postalCode','')+('\n'+d['address'] if d.get('address') else ''))],address_width-12)
+    fields['address']=rich([('フリガナ',katakana(d.get('addressKana',''))),('現住所 〒',d.get('postalCode','')+('\n'+d['address'] if d.get('address') else ''))],address_width-12)
     fields['contact']=rich([('Phone:',d.get('phone','')),('Email:',d.get('email',''))],contact_width-12)
-    fields['alternate']=rich([('ふりがな',d.get('alternateAddressKana','')),('連絡先 〒',d.get('alternatePostalCode','')+('\n'+d['alternateAddress'] if d.get('alternateAddress') else ''))],address_width-12)
+    fields['alternate']=rich([('フリガナ',katakana(d.get('alternateAddressKana',''))),('連絡先 〒',d.get('alternatePostalCode','')+('\n'+d['alternateAddress'] if d.get('alternateAddress') else ''))],address_width-12)
     fields['alternatePhone']=rich([('Phone:',d.get('alternatePhone','')),('', '（現住所以外に連絡を希望する場合のみ記入）')],contact_width-12)
     pairs=[(['address'],[W]),(['contact'],[W]),(['alternate'],[W]),(['alternatePhone'],[W])] if wide else [(['address','contact'],[W-contact_width,contact_width]),(['alternate','alternatePhone'],[W-contact_width,contact_width])]
     rows=[{'keys':keys,'widths':widths,'height':max(44,max(len(fields[k]['lines'])*18 for k in keys)+12)} for keys,widths in pairs]
     heights=[r['height'] for r in rows];chronology_y=86+main_height+sum(heights)+16
-    return fields,{'contactWidth':contact_width,'contactHeights':heights,'contactRows':rows,'kanaHeight':kana_height,'birthHeight':birth_height,'mainHeight':main_height,'headerEnd':86+main_height,'chronologyY':chronology_y,'chronologyHeight':BOTTOM-chronology_y}
+    return fields,{'contactWidth':contact_width,'contactHeights':heights,'contactRows':rows,'kanaHeight':kana_height,'birthHeight':birth_height,'mainHeight':main_height,'headerEnd':86+main_height,'chronologyY':chronology_y,'chronologyHeight':BOTTOM-28-chronology_y}
 
 def normalized_preferences(value):
     rest=re.sub(r'貴社の規定に従います[。．.]?', '', str(value or '')).lstrip()
@@ -180,19 +186,17 @@ def layout(d):
     bodies={}
     for key,value,minimum in [('motivation','\n\n'.join(filter(None,[d.get('motivation',''),d.get('strengths','')])),40),('preferences',normalized_preferences(d.get('preferences','')),24)]:
         wrapped=lines(value,CONTENT_SIZE,(W-12)*.96)
-        bodies[key]=max(minimum,len(wrapped)*CONTENT_SIZE*1.5+16)
+        bodies[key]=max(minimum,len(wrapped)*CONTENT_SIZE*1.5+(8+CONTENT_SIZE*1.5*1.5 if key=='motivation' else 16))
         fields[key]={**plain(value),'lines':wrapped,'leading':CONTENT_SIZE*1.5,'topPadding':8}
     heights={'chronology':GRID_HEADER+sum(r['height'] for r in right)+2,'qualifications':GRID_HEADER+sum(r['height'] for r in quals)+2,**{k:heading_heights[k]+bodies[k] for k in titles}}
     budget=722-36
     if capacity<24 or sum(heights.values())>budget:
-        raise ValueError('空白行・余白を自動調整しましたが、見出し13pt・本文11.5ptのまま2ページに収められません。内容は保存されています。長い内容を整理してください。文字は縮小・省略していません。')
-    desired={'chronology':134,'qualifications':140,'motivation':240,'preferences':110}
-    deficits={k:max(0,desired[k]-heights[k]) for k in heights};spare=budget-sum(heights.values());total=sum(deficits.values())
-    if total:
-        fraction=min(1,spare/total)
-        for k in heights:heights[k]+=deficits[k]*fraction
+        raise ValueError('空白行・余白を自動調整しましたが、見出し12pt・本文11ptのまま2ページに収められません。内容は保存されています。長い内容を整理してください。文字は縮小・省略していません。')
+    # Keep writing boxes content-sized; put spare page space into the tables above.
+    heights['preferences']=max(heights['preferences'],100) if budget-sum(heights.values())>=max(0,100-heights['preferences']) else heights['preferences']
     spare=budget-sum(heights.values())
-    for k,weight in [('chronology',.15),('qualifications',.2),('motivation',.5),('preferences',.15)]:heights[k]+=spare*weight
+    heights['chronology']+=spare*.55
+    heights['qualifications']+=spare*.45
     right=pad_rows(right,heights['chronology']-GRID_HEADER-2,widths)
     quals=pad_rows(quals,heights['qualifications']-GRID_HEADER-2,widths)
     return {'pages':2,'widths':widths,'jobs':[pad_rows(left,capacity,widths),right],'qualifications':quals,'fields':fields,'header':header,'page2':heights,'headingHeights':heading_heights,'fonts':{'heading':HEADING_SIZE,'content':CONTENT_SIZE}}
@@ -215,7 +219,10 @@ def pdf(d,out):
     def grid(rows,x,y,label_value,total_height):
         widths=model['widths'];rule(x,y,W,total_height)
         for offset in [widths[0],sum(widths[:2])]:c.line(x+offset,PAGE_H-y,x+offset,PAGE_H-y-total_height)
-        for value,offset in [('年',0),('月',widths[0]),(label_value,sum(widths[:2]))]:label(value,x+offset+5,y+5)
+        for value,offset in [('年',0),('月',widths[0]),(label_value,sum(widths[:2]))]:
+            tx=x+offset+5
+            if value==TITLE:tx=x+offset+(widths[2]-pdfmetrics.stringWidth(value,'JP',HEADING_SIZE))/2
+            label(value,tx,y+5)
         cursor=y+GRID_HEADER;c.line(x,PAGE_H-cursor,x+W,PAGE_H-cursor)
         for row in rows:
             offset=0
@@ -244,7 +251,7 @@ def pdf(d,out):
             if index:c.line(X+offset,PAGE_H-y,X+offset,PAGE_H-y-row['height'])
             text(model['fields'][key],X+offset+6,y+4);offset+=width
         y+=row['height']
-    grid(model['jobs'][0],X,h['chronologyY'],TITLE,h['chronologyHeight']);footer(1);c.showPage()
+    grid(model['jobs'][0],X,h['chronologyY'],TITLE,h['chronologyHeight']);label(GENDER_NOTE,X,748,CONTENT_SIZE);footer(1);c.showPage()
     heights=model['page2'];y=42
     grid(model['jobs'][1],X,y,TITLE,heights['chronology']);y+=heights['chronology']+12
     grid(model['qualifications'],X,y,'免許・資格',heights['qualifications']);y+=heights['qualifications']+12
@@ -299,9 +306,9 @@ def word(d,out):
         for row,height in zip(t.rows,heights):fixrow(row,height);cell_format(row.cells[0])
         return [r.cells[0] for r in t.rows]
     def chronology_cell(cell,rows,label):
-        vals=[[plain('年',HEADING_SIZE),plain('月',HEADING_SIZE),plain(label,HEADING_SIZE)]]+[r['cells'] for r in rows]
+        vals=[[plain('年',HEADING_SIZE),plain('月',HEADING_SIZE),{**plain(label,HEADING_SIZE),'align':'center' if label==TITLE else 'left'}]]+[r['cells'] for r in rows]
         heights=[GRID_HEADER]+[r['height'] for r in rows];heights[-1]-=2;nested(cell,vals,model['widths'],heights)
-    h=model['header'];first=outer([44,h['mainHeight'],*h['contactHeights'],16,h['chronologyHeight']]);write(first[0],[plain('履 歴 書',HEADING_SIZE),plain(jpdate(asof(d).isoformat())+' 現在')])
+    h=model['header'];first=outer([44,h['mainHeight'],*h['contactHeights'],16,h['chronologyHeight'],28]);write(first[0],[plain('履 歴 書',HEADING_SIZE),plain(jpdate(asof(d).isoformat())+' 現在')])
     t=nested(first[1],[[plain(''),plain('')]],[W-100,100],[h['mainHeight']-2]);left,right=t.rows[0].cells
     inner=nested(left,[[model['fields']['kana']],[plain('')],[plain('')]],[W-100],[h['kanaHeight'],h['mainHeight']-h['kanaHeight']-h['birthHeight']-4,h['birthHeight']])
     write(inner.rows[1].cells[0],[plain('氏名',HEADING_SIZE),model['fields']['name']])
@@ -310,7 +317,7 @@ def word(d,out):
         right.text='';p=right.paragraphs[0];p.paragraph_format.line_spacing=Pt(114);p.add_run().add_picture(io.BytesIO(base64.b64decode(d['photo'].split(',',1)[1])),width=Mm(30),height=Mm(40))
     else:write(right,[fit('写真を貼る位置',88,60,'写真',HEADING_SIZE,HEADING_SIZE),fit('縦40mm × 横30mm',88,52,'写真寸法')])
     for cell,row in zip(first[2:2+len(h['contactRows'])],h['contactRows']):nested(cell,[[model['fields'][k] for k in row['keys']]],row['widths'],[row['height']-2])
-    chronology_cell(first[-1],model['jobs'][0],TITLE)
+    chronology_cell(first[-2],model['jobs'][0],TITLE);write(first[-1],[{**plain(GENDER_NOTE),'topPadding':8}])
     p=doc.add_paragraph();p.paragraph_format.line_spacing=Pt(1);p.add_run().add_break(WD_BREAK.PAGE)
     heights=model['page2'];second=outer([heights['chronology'],12,heights['qualifications'],12,heights['motivation'],12,heights['preferences']])
     chronology_cell(second[0],model['jobs'][1],TITLE);chronology_cell(second[2],model['qualifications'],'免許・資格')
